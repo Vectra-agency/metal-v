@@ -1,0 +1,30 @@
+# Калькулятор в проде: один контейнер — Node отдаёт собранный клиент (dist/) и API цен mc.ru.
+# Наружу только 127.0.0.1:61890; TLS и gzip — на хостовом nginx (DEPLOY.md).
+#
+#   ./ops/deploy.sh          # сборка, перезапуск, проверка /api/health, откат при сбое
+name: metal-v
+
+services:
+  app:
+    build:
+      context: .
+      args:
+        GIT_SHA: ${GIT_SHA:-dev}
+    image: metal-v:latest
+    ports:
+      - '127.0.0.1:${METAL_PORT:-61890}:8787'
+    volumes:
+      - ./data:/app/data # рабочие цены mc.ru (data/prices.json) переживают пересборку
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:8787/api/health']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 256m # VPS общий с другими проектами
+    logging:
+      driver: json-file
+      options: { max-size: '10m', max-file: '3' }

@@ -1,0 +1,78 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  APP_URL: https://metal.vectra-agency.tech
+  DEPLOY_DIR: /var/www/metal-v
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      - run: npm run build # tsc --noEmit + vite build
+
+  # Деплой: сервер сам забирает коммит из GitHub (репозиторий публичный) и
+  # пересобирает контейнер через ops/deploy.sh — с проверкой версии и откатом.
+  # Пока секреты DEPLOY_* не заданы, деплой пропускается, а не падает (DEPLOY.md).
+  deploy:
+    needs: build
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    env:
+      SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      SSH_HOST: ${{ secrets.DEPLOY_HOST }}
+      SSH_USER: ${{ secrets.DEPLOY_USER }}
+      SSH_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
+    steps:
+      - name: Check secrets
+        id: cfg
+        run: |
+          if [ -n "$SSH_KEY" ] && [ -n "$SSH_HOST" ] && [ -n "$SSH_USER" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Секреты DEPLOY_SSH_KEY / DEPLOY_HOST / DEPLOY_USER не заданы — деплой пропущен"
+          fi
+
+      - name: Set up SSH
+        if: steps.cfg.outputs.ready == 'true'
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "$SSH_PORT" -H "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Deploy
+        if: steps.cfg.outputs.ready == 'true'
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" bash -s -- "$DEPLOY_DIR" "$GITHUB_SHA" <<'EOF'
+          set -euo pipefail
+          cd "$1"
+          git fetch --quiet origin
+          git checkout --quiet --force --detach "$2"
+          ./ops/deploy.sh "$2"
+          EOF
+
+      - name: Check public URL
+        if: steps.cfg.outputs.ready == 'true'
+        run: |
+          for i in 1 2 3 4 5; do
+            v=$(curl -fsS "$APP_URL/api/health" | sed -n 's/.*"version":"\([^"]*\)".*/\1/p') || true
+            [ "$v" = "$GITHUB_SHA" ] && { echo "$APP_URL → $v"; exit 0; }
+            sleep 3
+          done
+          echo "::error::$APP_URL отдаёт версию '$v', ожидалась $GITHUB_SHA"
+          exit 1

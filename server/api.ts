@@ -40,6 +40,11 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse): Prom
   const url = new URL(req.url ?? '/', 'http://localhost');
   if (!url.pathname.startsWith('/api/')) return false;
   try {
+    // проверка живости для docker и деплоя: version — коммит сборки (GIT_SHA)
+    if (url.pathname === '/api/health') {
+      send(res, 200, { ok: true, version: process.env.GIT_SHA ?? 'dev' });
+      return true;
+    }
     if (url.pathname === '/api/prices' && req.method === 'GET') {
       send(res, 200, loadBook());
       return true;

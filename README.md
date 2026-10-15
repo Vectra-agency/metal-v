@@ -6,6 +6,8 @@
 
 ## Запуск
 
+Онлайн: https://metal.vectra-agency.tech — обновляется сам при push в `main` ([DEPLOY.md](DEPLOY.md)).
+
 Нужен Node.js 23.6 или новее (проверено на 26).
 
 ```bash
