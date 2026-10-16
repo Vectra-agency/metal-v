@@ -131,6 +131,46 @@ if (dir1 && existsSync(dir1)) {
   console.log('ИТОГО'.padEnd(28), rub(sc), 'факт', rub(sf), pct(sc, sf));
 }
 
+// ---- Распознавание PDF против DXF тех же деталей (площадь и длина реза)
+{
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  const { readPdf } = await import('../src/core/pdf.ts');
+  const { analyzePdf, buildGeometry } = await import('../src/core/pdfAnalyze.ts');
+  const pairs: [string, string, string?][] = [
+    ['3/БВС-305Х300.000 - Блок выхода сброса.pdf', '3/БВС-305Х300.000 - Блок выхода сброса.dxf'],
+    ['3/БВк-400х340.00.000 - Блок ввода кабеля.pdf', '3/БВк-400х340.00.000 - Блок ввода кабеля (контур).dxf'],
+    ['4/НГЭН.745421.0001.pdf', '4/НГЭН.745421.0001 st3 s2mm 5sht.dxf'],
+    ['4/НГЭН.А86.11.13.0002 Лист зашивочный.pdf', '4/НГЭН.А86.11.13.0002 st3 s3mm rifleniy 5sht.dxf'],
+    ['4/НГЭН.А86.11.13.0004 Лист зашивочный.pdf', '4/НГЭН.А86.11.13.0004 st3 s3mm rifleniy 5sht.dxf'],
+    ['2/НГЭН.745428.0003 Короб защитный (изм.2).pdf', '2/НГЭН.745428.0003-0700 amg2 s3mm.dxf', 'НГЭН.745428.0003-0700'],
+    ['2/НГЭН.745428.0003 Короб защитный (изм.2).pdf', '2/НГЭН.745428.0003-1700 amg2 s3mm.dxf', 'НГЭН.745428.0003-1700'],
+  ];
+  console.log('\nPDF → геометрия, сверка с DXF той же детали');
+  console.log('чертёж'.padEnd(34), 'габарит PDF'.padStart(14), 'S PDF'.padStart(8), 'S DXF'.padStart(8), 'рез PDF'.padStart(8), 'рез DXF'.padStart(8), 'гибов'.padStart(6));
+  for (const [pf, df, desig] of pairs) {
+    const buf = readFileSync(join(ROOT, pf));
+    const pages = await readPdf(pdfjs as never, buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength));
+    const an = analyzePdf(pages, pf, desig ?? pf.split('/').pop()!.replace(/\.pdf$/i, '').split(' ')[0]);
+    const d = load(join(ROOT, df));
+    if (!an.meta) {
+      console.log(pf.padEnd(34), 'не распознан');
+      continue;
+    }
+    const g = buildGeometry(an.meta);
+    const name = (desig ?? pf.split('/').pop()!).slice(0, 34);
+    console.log(
+      name.padEnd(34),
+      `${Math.round(g.width)}×${Math.round(g.height)}`.padStart(14),
+      (g.netArea / 1e6).toFixed(3).padStart(8),
+      (d.geom.netArea / 1e6).toFixed(3).padStart(8),
+      (g.cutLength / 1000).toFixed(2).padStart(8),
+      (d.geom.cutLength / 1000).toFixed(2).padStart(8),
+      String(g.bends.length).padStart(6),
+    );
+    report.push([`PDF ${name} площадь`, g.netArea, d.geom.netArea]);
+  }
+}
+
 const errs = report.map(([, c, f]) => Math.abs(c - f) / f);
 console.log(`\nСредняя абсолютная ошибка по ${errs.length} сверкам: ${((errs.reduce((a, b) => a + b, 0) / errs.length) * 100).toFixed(1)}%`);
 if (process.env.JSON_OUT) (await import('node:fs')).writeFileSync(process.env.JSON_OUT, JSON.stringify(report));

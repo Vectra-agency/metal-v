@@ -181,8 +181,17 @@ function GroupCard({ g, byId, order, settings, onOrder, onSettings, highlight, o
       </div>
       {c.capped && (
         <div className="note small">
-          По раскрою этого заказа вышло бы {rub0(c.nest.sheetsFractional * c.sheetPrice)}, но отход ограничен {settings.maxWastePct}% к массе заготовок: неудобные детали цех обычно
-          докладывает к другим заказам. Потолок меняется в «Расценках».
+          {g.policy === 'whole' ? (
+            <>
+              Целыми листами вышло бы {rub0(Math.ceil(c.nest.sheetsFractional - 1e-9) * c.sheetPrice)} — для такой партии это неправдоподобно, поэтому отход ограничен{' '}
+              {settings.maxWasteWholePct ?? 100}% к массе заготовок. Потолок меняется в «Расценках».
+            </>
+          ) : (
+            <>
+              По раскрою этого заказа вышло бы {rub0(c.nest.sheetsFractional * c.sheetPrice)}, но отход ограничен {settings.maxWastePct}% к массе заготовок: неудобные детали
+              цех обычно докладывает к другим заказам. Потолок меняется в «Расценках».
+            </>
+          )}
         </div>
       )}
       {Object.keys(c.splits).length > 0 && (

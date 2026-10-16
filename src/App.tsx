@@ -17,6 +17,10 @@ import {
   type OrderPosition,
 } from './order.ts';
 import { ManualDialog } from './components/ManualDialog.tsx';
+import type { QtyLine } from './core/pdfAnalyze.ts';
+import { mergeImports } from './merge.ts';
+import { importPdf } from './pdfImport.ts';
+import { clearFiles } from './idb.ts';
 import { PositionsTable } from './components/PositionsTable.tsx';
 import { SettingsDrawer } from './components/SettingsDrawer.tsx';
 import { SheetsSection } from './components/SheetsSection.tsx';
@@ -137,32 +141,53 @@ export function App() {
 
   const handleFiles = async (files: File[]) => {
     const dxf = files.filter((f) => /\.dxf$/i.test(f.name));
+    const pdf = files.filter((f) => /\.pdf$/i.test(f.name));
     const archives = files.filter((f) => /\.(zip|rar|7z)$/i.test(f.name));
-    const other = files.length - dxf.length - archives.length;
-    if (archives.length) notify('warn', `Архивы (${archives.map((a) => a.name).join(', ')}) нужно распаковать и перетащить папку с DXF`);
-    if (other > 0) notify('info', `Пропущено файлов не-DXF: ${other} (PDF, m3d и т.п. не нужны для расчёта)`);
-    if (!dxf.length) return;
+    const other = files.length - dxf.length - pdf.length - archives.length;
+    if (archives.length) notify('warn', `Архивы (${archives.map((a) => a.name).join(', ')}) нужно распаковать и перетащить папку`);
+    if (other > 0) notify('info', `Пропущено файлов (не DXF и не PDF): ${other}`);
     const existing = new Set(order.positions.map((p) => p.fileName));
-    const fresh = dxf.filter((f) => !existing.has(f.name));
-    if (fresh.length < dxf.length) notify('info', `Уже в заказе, пропущено: ${dxf.length - fresh.length}`);
+    const fresh = [...dxf, ...pdf].filter((f) => !existing.has(f.name));
+    if (fresh.length < dxf.length + pdf.length) notify('info', `Уже в заказе, пропущено: ${dxf.length + pdf.length - fresh.length}`);
+    if (!fresh.length) return;
     const d = defaults();
-    const added: OrderPosition[] = [];
+    const addedDxf: OrderPosition[] = [];
+    const addedPdf: OrderPosition[] = [];
+    const qty: QtyLine[] = [];
+    const skipped: string[] = [];
     setImporting({ done: 0, total: fresh.length });
     for (let i = 0; i < fresh.length; i++) {
+      const f = fresh[i];
       try {
-        added.push(await importDxf(fresh[i], d));
+        if (/\.pdf$/i.test(f.name)) {
+          const r = await importPdf(f, d);
+          addedPdf.push(...r.positions);
+          qty.push(...r.qty);
+          skipped.push(...r.notes);
+        } else addedDxf.push(await importDxf(f, d));
       } catch (e) {
-        notify('error', `${fresh[i].name}: ${(e as Error).message}`);
+        notify('error', `${f.name}: ${(e as Error).message}`);
       }
       setImporting({ done: i + 1, total: fresh.length });
-      if (i % 10 === 9) await new Promise((r) => setTimeout(r, 0)); // даём отрисоваться прогрессу
+      if (i % 10 === 9 || /\.pdf$/i.test(f.name)) await new Promise((r) => setTimeout(r, 0)); // даём отрисоваться прогрессу
     }
     setImporting(null);
-    added.sort((a, b) => (a.fileName ?? '').localeCompare(b.fileName ?? '', 'ru'));
-    setOrder((o) => ({ ...o, positions: [...o.positions, ...added] }));
-    const guessed = added.filter((p) => p.guessed.material || p.guessed.thickness || p.guessed.qty).length;
-    if (added.length) notify('info', `Добавлено ${added.length} ${plural(added.length, 'деталь', 'детали', 'деталей')}`);
-    if (guessed) notify('warn', `У ${guessed} поз. материал, толщина или количество не распознаны из имени файла — они подсвечены жёлтым`);
+    const byFile = (a: OrderPosition, b: OrderPosition) => (a.fileName ?? '').localeCompare(b.fileName ?? '', 'ru');
+    addedDxf.sort(byFile);
+    addedPdf.sort(byFile);
+    const m = mergeImports(latest.current.positions, addedDxf, addedPdf, qty);
+    const notes = m.notes;
+    setOrder((o) => ({ ...o, positions: m.positions }));
+    const added = [...addedDxf, ...addedPdf];
+    const guessed = added.filter((p) => p.guessed.material || p.guessed.thickness).length;
+    // после слияния: позиции этой загрузки, где количество так и не нашлось
+    const addedIds = new Set(added.map((p) => p.id));
+    const noQty = m.positions.filter((p) => addedIds.has(p.id) && !p.disabled && p.guessed.qty).length;
+    if (added.length) notify('info', `Обработано ${added.length} ${plural(added.length, 'деталь', 'детали', 'деталей')}${addedPdf.length ? `, из них по PDF: ${addedPdf.length}` : ''}`);
+    if (notes.length) notify('info', notes.slice(0, 6).join('\n') + (notes.length > 6 ? `\n… ещё ${notes.length - 6}` : ''));
+    if (skipped.length) notify('warn', skipped.slice(0, 5).join('\n'));
+    if (guessed) notify('warn', `У ${guessed} поз. материал или толщина не распознаны — подсвечены жёлтым`);
+    if (noQty) notify('info', `Количество не указано у ${noQty} поз. — стоит 1 шт, поле подсвечено`);
   };
 
   // перетаскивание на всё окно
@@ -265,7 +290,10 @@ export function App() {
             className="btn ghost"
             disabled={!hasPositions}
             onClick={() => {
-              if (confirm('Начать новый расчёт? Текущий заказ будет очищен.')) setOrder(emptyOrder());
+              if (confirm('Начать новый расчёт? Текущий заказ будет очищен.')) {
+                setOrder(emptyOrder());
+                clearFiles();
+              }
             }}
           >
             Новый
@@ -288,7 +316,7 @@ export function App() {
             <h2>Детали</h2>
             <div className="toolbar-actions">
               <button className="btn primary" onClick={() => fileInput.current?.click()}>
-                + DXF-файлы
+                + DXF / PDF
               </button>
               <button className="btn" onClick={() => dirInput.current?.click()}>
                 + Папка
@@ -300,7 +328,7 @@ export function App() {
             <input
               ref={fileInput}
               type="file"
-              accept=".dxf,.DXF"
+              accept=".dxf,.DXF,.pdf,.PDF"
               multiple
               hidden
               onChange={(e) => {
@@ -347,12 +375,16 @@ export function App() {
               <div className="dz-icon" aria-hidden>
                 ⤓
               </div>
-              <div className="dz-title">Перетащите сюда DXF-файлы или целую папку</div>
+              <div className="dz-title">Перетащите сюда DXF или PDF-чертежи — можно целую папку</div>
               <ol className="dz-steps">
                 <li>
-                  Из имени файла подставятся материал, толщина и количество: <code>НГЭН.745421.0001 st3 s2mm 5sht.dxf</code>
+                  <b>DXF</b> — точный контур; материал, толщина и количество берутся из имени: <code>НГЭН.745421.0001 st3 s2mm 5sht.dxf</code>
                 </li>
-                <li>Программа найдёт контур, отверстия и рамку чертежа, посчитает длину реза, врезки, массу и разложит детали по листам</li>
+                <li>
+                  <b>PDF</b> — программа найдёт развёртку, масштаб, линии гиба, материал и толщину из штампа, размеры из таблицы исполнений и сверит массу
+                  с чертежом. Если пришли и DXF, и PDF одной детали — они объединятся
+                </li>
+                <li>Контур, отверстия, длина реза, врезки, масса, раскладка по листам — считаются сами</li>
                 <li>Проверьте подсвеченные поля и укажите число гибов — цена за деталь и по заказу считается сразу</li>
               </ol>
               <div className="dz-actions" onClick={(e) => e.stopPropagation()}>
@@ -385,7 +417,7 @@ export function App() {
 
       {dragging && (
         <div className="drop-overlay no-print">
-          <div>Отпустите — добавлю DXF в расчёт</div>
+          <div>Отпустите — добавлю чертежи в расчёт</div>
         </div>
       )}
       {showSettings && <SettingsDrawer settings={settings} onChange={setSettings} onClose={() => setShowSettings(false)} />}

@@ -61,6 +61,7 @@ export interface Settings {
   margin: number; // поле листа, мм
   bboxWastePct: number; // отход при расчёте «по габариту», %
   maxWastePct: number; // потолок отхода при расчёте по раскрою, % к габаритной массе
+  maxWasteWholePct: number; // то же при списании целыми листами (мелкие партии не платят за весь лист)
   markupPct: number; // наценка, %
   vatPct: number; // НДС (цены уже с НДС)
   delivery: number; // доставка на заказ, ₽
@@ -115,6 +116,7 @@ export const DEFAULT_SETTINGS: Settings = {
   margin: 10,
   bboxWastePct: 15,
   maxWastePct: 40,
+  maxWasteWholePct: 100,
   markupPct: 0,
   vatPct: 22,
   delivery: 0,
@@ -322,9 +324,15 @@ function evalOption(offer: SheetOffer, mat: Material, t: number, policy: SheetPo
     materialCost = kg * offer.pricePerKg;
     sheetsCharged = kg / sheetKg;
   } else if (policy === 'whole') {
-    // каждый начатый лист целиком
+    // каждый начатый лист целиком, но не больше габаритной массы × (1 + потолок)
     sheetsCharged = Math.ceil(n.sheetsFractional - 1e-9);
     materialCost = sheetsCharged * sheetPrice;
+    const capWhole = bboxKg * (1 + (s.maxWasteWholePct ?? 100) / 100) * offer.pricePerKg;
+    if (materialCost > capWhole) {
+      materialCost = capWhole;
+      sheetsCharged = capWhole / sheetPrice;
+      capped = true;
+    }
   } else {
     // по раскрою: последний лист по занятой части; отход не больше потолка —
     // неудобные детали цех раскладывает вместе с чужими заказами

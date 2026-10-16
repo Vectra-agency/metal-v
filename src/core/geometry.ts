@@ -66,7 +66,7 @@ export function unionBox(boxes: Box[]): Box {
   };
 }
 
-function signedArea(pts: Vec[]): number {
+export function signedArea(pts: Vec[]): number {
   let s = 0;
   for (let i = 0, n = pts.length; i < n; i++) {
     const a = pts[i];
@@ -76,7 +76,7 @@ function signedArea(pts: Vec[]): number {
   return s / 2;
 }
 
-function inside(p: Vec, poly: Vec[]): boolean {
+export function inside(p: Vec, poly: Vec[]): boolean {
   let c = false;
   for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
     const a = poly[i];
@@ -308,7 +308,13 @@ function looksLikeSheetFrame(b: Box): boolean {
   return SHEET_FORMATS.some(([fs, fl]) => Math.abs(s - fs) < 1.5 && Math.abs(l - fl) < 1.5);
 }
 
-export function analyze(dwg: DxfDrawing): Analysis {
+export interface AnalyzeOptions {
+  /** 'frame' — убрать контур, вложенные поднять на уровень выше (рамка листа);
+   *  'drop' — убрать контур вместе со всем вложенным (штамп, таблица) */
+  loopFilter?: (l: Loop) => 'frame' | 'drop' | null;
+}
+
+export function analyze(dwg: DxfDrawing, opts: AnalyzeOptions = {}): Analysis {
   const warnings: string[] = [];
   if (!dwg.prims.length) {
     return { parts: [], annotations: [], bends: [], stray: [], bbox: { minX: 0, minY: 0, maxX: 0, maxY: 0 }, warnings: ['В файле нет геометрии'] };
@@ -346,7 +352,30 @@ export function analyze(dwg: DxfDrawing): Analysis {
     }
     l.parent = best ? best.id : -1;
   }
-  const byId = new Map(loops.map((l) => [l.id, l]));
+  let byId = new Map(loops.map((l) => [l.id, l]));
+  if (opts.loopFilter) {
+    const removed = new Set<number>();
+    const verdict = new Map(loops.map((l) => [l.id, opts.loopFilter!(l)]));
+    // рамки: убираем, вложенное поднимаем к родителю рамки
+    for (const l of loops.slice().sort((a, b) => b.area - a.area)) {
+      if (verdict.get(l.id) !== 'frame') continue;
+      for (const c of loops) if (c.parent === l.id) c.parent = l.parent;
+      removed.add(l.id);
+    }
+    // штампы/таблицы: убираем с потомками
+    const isUnder = (l: Loop, id: number): boolean => (l.parent < 0 ? false : l.parent === id || isUnder(byId.get(l.parent)!, id));
+    for (const l of loops) {
+      if (verdict.get(l.id) !== 'drop' || removed.has(l.id)) continue;
+      removed.add(l.id);
+      for (const c of loops) if (isUnder(c, l.id)) removed.add(c.id);
+    }
+    if (removed.size) {
+      const keep = loops.filter((l) => !removed.has(l.id));
+      loops.length = 0;
+      loops.push(...keep);
+      byId = new Map(loops.map((l) => [l.id, l]));
+    }
+  }
   const depthOf = (l: Loop): number => (l.parent < 0 ? 0 : depthOf(byId.get(l.parent)!) + 1);
   for (const l of loops) l.depth = depthOf(l);
   const rootOf = (l: Loop): Loop => (l.parent < 0 ? l : rootOf(byId.get(l.parent)!));

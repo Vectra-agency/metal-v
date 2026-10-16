@@ -4,6 +4,7 @@ import { parseDxf, type Vec } from './core/dxf.ts';
 import { analyze, metricsOf, type Analysis } from './core/geometry.ts';
 import { parseFileName, MATERIAL_BY_ID } from './core/materials.ts';
 import { DEFAULT_SETTINGS, type Position, type PriceBook, type Settings } from './core/pricing.ts';
+import type { PdfMeta } from './core/pdfAnalyze.ts';
 
 export interface Preview {
   outer: number[][]; // плоские массивы x0,y0,x1,y1…
@@ -13,11 +14,21 @@ export interface Preview {
   bbox: [number, number, number, number];
 }
 
+/** Что известно о детали из PDF-чертежа */
+export interface PdfInfo {
+  meta: PdfMeta; // распознанный вид, масштаб, штамп, таблица исполнений
+  fileKey: string; // ключ файла в IndexedDB (для показа чертежа)
+  geometryFromPdf: boolean; // false — контур взят из DXF, PDF дал гибы/материал/массу
+  notes: string[];
+}
+
 export interface OrderPosition extends Position {
   preview?: Preview;
   warnings: string[];
   guessed: { material: boolean; thickness: boolean; qty: boolean };
   detectedBends: number;
+  source?: 'dxf' | 'pdf' | 'manual';
+  pdf?: PdfInfo;
 }
 
 export interface Order {
@@ -64,7 +75,7 @@ function simplify(pts: Vec[], tol: number): Vec[] {
   return pts.filter((_, i) => keep[i]);
 }
 
-function flat(pts: Vec[], tol: number, closed: boolean): number[] {
+export function flat(pts: Vec[], tol: number, closed: boolean): number[] {
   let s: Vec[];
   if (closed && pts.length > 3) {
     // замкнутый контур делим в самой дальней от начала точке, иначе упрощение вырождается
@@ -84,7 +95,7 @@ function flat(pts: Vec[], tol: number, closed: boolean): number[] {
   return out;
 }
 
-function makePreview(an: Analysis): Preview {
+export function makePreview(an: Analysis): Preview {
   const b = an.bbox;
   const tol = Math.max(0.05, Math.hypot(b.maxX - b.minX, b.maxY - b.minY) / 2500);
   return {
@@ -135,6 +146,7 @@ export async function importDxf(file: File, defs: ImportDefaults): Promise<Order
     warnings,
     guessed: { material: !pn.materialId, thickness: !pn.thickness, qty: !pn.qty },
     detectedBends: m.bendCount,
+    source: 'dxf',
   };
 }
 
@@ -184,10 +196,11 @@ export function manualPosition(o: {
     warnings: [],
     guessed: { material: false, thickness: false, qty: false },
     detectedBends: 0,
+    source: 'manual',
   };
 }
 
-/** Рекурсивно собирает .dxf из перетаскивания (файлы и папки) */
+/** Рекурсивно собирает файлы из перетаскивания (файлы и папки) */
 export async function filesFromDrop(dt: DataTransfer): Promise<File[]> {
   const out: File[] = [];
   const entries = [...dt.items].map((i) => (i.kind === 'file' ? i.webkitGetAsEntry?.() : null)).filter(Boolean) as FileSystemEntry[];

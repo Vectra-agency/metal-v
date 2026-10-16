@@ -230,6 +230,11 @@ export function SettingsDrawer({ settings: s, onChange, onClose }: Props) {
             </label>
             <p className="small muted">Металл по раскрою не дороже, чем габаритная масса заготовок плюс этот процент: неудобные детали цех докладывает к чужим заказам.</p>
             <label className="field">
+              <span>Потолок отхода «целыми листами»</span>
+              <NumInput value={s.maxWasteWholePct ?? 100} suffix="%" width={60} onChange={(v) => set({ maxWasteWholePct: v })} />
+            </label>
+            <p className="small muted">Чтобы одна мелкая деталь из нержавейки или алюминия не оплачивала весь лист.</p>
+            <label className="field">
               <span>Отход при списании «по габариту»</span>
               <NumInput value={s.bboxWastePct} suffix="%" width={60} onChange={(v) => set({ bboxWastePct: v })} />
             </label>

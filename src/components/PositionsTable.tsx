@@ -6,6 +6,7 @@ import type { OrderPosition } from '../order.ts';
 import { CostBar } from './CostBar.tsx';
 import { NumInput } from './NumInput.tsx';
 import { PartPreview } from './PartPreview.tsx';
+import { PdfBadge, PdfBlock } from './PdfBlock.tsx';
 
 interface Props {
   positions: OrderPosition[];
@@ -230,6 +231,7 @@ export function PositionsTable(props: Props) {
                       <span className="idx">{idx + 1}.</span> {p.name}
                     </button>
                     {p.fileName && p.fileName !== p.name && <div className="pfile">{p.fileName}</div>}
+                    <PdfBadge p={p} />
                     {warn.length > 0 && (
                       <div className="pwarn" title={warn.join('\n')}>
                         ⚠ {warn[0]}
@@ -344,6 +346,7 @@ function Detail({ p, r, res, settings, onUpdate, onRemove, onDuplicate }: Props 
             </>
           )}
         </dl>
+        <PdfBlock p={p} onUpdate={onUpdate} />
       </div>
 
       <div className="d-calc">

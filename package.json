@@ -11,12 +11,14 @@
     "serve": "vite build && node server/index.ts",
     "prices": "node scripts/update-prices.ts",
     "calibrate": "node scripts/calibrate.ts",
-    "analyze": "node scripts/analyze.ts"
+    "analyze": "node scripts/analyze.ts",
+    "analyze-pdf": "node scripts/analyze-pdf.ts"
   },
   "engines": {
     "node": ">=23.6"
   },
   "dependencies": {
+    "pdfjs-dist": "^6.4.299",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
   },
