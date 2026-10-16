@@ -38,9 +38,12 @@ export interface Order {
   priceOverride: Record<string, number>;
   markupPct: number;
   delivery: number;
+  v?: number; // версия формата: 2 — наценка по умолчанию 50 %
 }
 
-export const emptyOrder = (): Order => ({ title: '', positions: [], sheetChoice: {}, priceOverride: {}, markupPct: 0, delivery: 0 });
+export const DEFAULT_MARKUP_PCT = 50;
+
+export const emptyOrder = (): Order => ({ title: '', positions: [], sheetChoice: {}, priceOverride: {}, markupPct: DEFAULT_MARKUP_PCT, delivery: 0, v: 2 });
 
 let seq = 0;
 export const newId = () => `p${Date.now().toString(36)}${(seq++).toString(36)}`;
@@ -231,6 +234,8 @@ export function loadOrder(): Order {
     const raw = localStorage.getItem(K_ORDER);
     if (raw) {
       const o = JSON.parse(raw) as Order;
+      // раньше наценка по умолчанию была 0 % — в таких заказах ставим новую
+      if (!o.v && !o.markupPct) o.markupPct = DEFAULT_MARKUP_PCT;
       o.positions = o.positions.filter((p) => MATERIAL_BY_ID.has(p.materialId));
       return { ...emptyOrder(), ...o };
     }

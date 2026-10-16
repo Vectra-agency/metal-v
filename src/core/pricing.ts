@@ -277,12 +277,14 @@ export interface PosResult {
   share: number; // доля в металле группы
   piece: { material: number; cut: number; pierce: number; bend: number; extras: number; total: number };
   sum: { material: number; cut: number; pierce: number; bend: number; extras: number; total: number };
+  price: { piece: number; sum: number }; // с наценкой; piece/sum.total — себестоимость
   warnings: string[];
 }
 
 export interface OrderResult {
   groups: GroupResult[];
   positions: Map<string, PosResult>;
+  markupPct: number;
   totals: { material: number; cutting: number; bending: number; extras: number; delivery: number; cost: number; markup: number; total: number; vat: number; kg: number; cutM: number; bends: number; pieces: number };
 }
 
@@ -358,6 +360,7 @@ export function computeOrder(positions: Position[], book: PriceBook, s: Settings
   const groups: GroupResult[] = [];
   const results = new Map<string, PosResult>();
   const T = { material: 0, cutting: 0, bending: 0, extras: 0, delivery: s.delivery, cost: 0, markup: 0, total: 0, vat: 0, kg: 0, cutM: 0, bends: 0, pieces: 0 };
+  const markupK = 1 + s.markupPct / 100;
 
   for (const [key, items] of byGroup) {
     const mat = getMaterial(items[0].materialId);
@@ -439,6 +442,7 @@ export function computeOrder(positions: Position[], book: PriceBook, s: Settings
         share,
         piece,
         sum,
+        price: { piece: total * markupK, sum: sum.total * markupK },
         warnings,
       });
       T.material += sum.material;
@@ -457,5 +461,5 @@ export function computeOrder(positions: Position[], book: PriceBook, s: Settings
   T.total = T.cost + T.markup;
   T.vat = (T.total * s.vatPct) / (100 + s.vatPct);
   groups.sort((a, b) => a.material.label.localeCompare(b.material.label) || a.t - b.t);
-  return { groups, positions: results, totals: T };
+  return { groups, positions: results, markupPct: s.markupPct, totals: T };
 }

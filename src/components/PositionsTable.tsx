@@ -189,6 +189,7 @@ export function PositionsTable(props: Props) {
             </th>
             <th className="c-price r sortable" onClick={() => toggleSort('piece')}>
               Цена за шт{sortMark('piece')}
+              {res.markupPct !== 0 && <div className="muted small">с наценкой {n1(res.markupPct)}%</div>}
             </th>
             <th className="c-sum r sortable" onClick={() => toggleSort('sum')}>
               Сумма{sortMark('sum')}
@@ -283,11 +284,11 @@ export function PositionsTable(props: Props) {
                   <td className="c-money r">{r ? rub(r.piece.cut + r.piece.pierce) : '—'}</td>
                   <td className="c-money r">{r && r.piece.bend ? rub(r.piece.bend) : <span className="muted">—</span>}</td>
                   <td className="c-money r">{r && r.piece.extras ? rub(r.piece.extras) : <span className="muted">—</span>}</td>
-                  <td className="c-price r">
-                    <div className="strong">{r ? rub(r.piece.total) : '—'}</div>
+                  <td className="c-price r" title={r && res.markupPct ? `себестоимость ${rub(r.piece.total)} + наценка ${n1(res.markupPct)}%` : undefined}>
+                    <div className="strong">{r ? rub(r.price.piece) : '—'}</div>
                     {r && <CostBar parts={{ material: r.piece.material, cut: r.piece.cut + r.piece.pierce, bend: r.piece.bend, extras: r.piece.extras }} height={4} />}
                   </td>
-                  <td className="c-sum r strong">{r ? rub0(r.sum.total) : '—'}</td>
+                  <td className="c-sum r strong">{r ? rub0(r.price.sum) : '—'}</td>
                   <td className="c-act">
                     <button className={`iconbtn chev ${isOpen ? 'up' : ''}`} onClick={() => toggleOpen(p.id)} aria-label="Подробнее" title="Подробный расчёт">
                       ▾
@@ -429,7 +430,16 @@ function Detail({ p, r, res, settings, onUpdate, onRemove, onDuplicate }: Props 
               </div>
             </li>
             <li className="step-total">
-              Итого: <b>{rub(r.piece.total)}</b> за шт × {p.qty} шт = <b>{rub0(r.sum.total)}</b>
+              {res.markupPct ? (
+                <>
+                  Себестоимость <b>{rub(r.piece.total)}</b> + наценка {n1(res.markupPct)}% = <b>{rub(r.price.piece)}</b> за шт × {p.qty} шт ={' '}
+                  <b>{rub0(r.price.sum)}</b>
+                </>
+              ) : (
+                <>
+                  Итого: <b>{rub(r.piece.total)}</b> за шт × {p.qty} шт = <b>{rub0(r.sum.total)}</b>
+                </>
+              )}
             </li>
           </ol>
         )}
