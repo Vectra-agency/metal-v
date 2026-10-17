@@ -6,3 +6,5 @@ data
 public/_samples
 *.command
 *.bat
+.env
+.env.*

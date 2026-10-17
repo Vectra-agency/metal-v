@@ -262,13 +262,20 @@ export function parseFileName(fileName: string): ParsedName {
   const qm = /(?:^|[\s_\-.])(\d+)\s?(?:sht|шт|pcs|pc)\.?(?=$|[\s_\-.])/i.exec(base) ?? /(?:^|[\s_\-.])[xх×](\d+)(?=$|[\s_\-.])/i.exec(base);
   const qty = qm ? parseInt(qm[1], 10) : null;
 
-  // обозначение — всё до первого распознанного токена
+  // обозначение — всё до первого распознанного токена: толщины, количества или ЛЮБОГО материала
+  // («… st3 s3mm rifleniy 5sht» — материал рифлёный, но и «st3» в обозначение не идёт)
   const cuts = [tm?.index, qm?.index].filter((v): v is number => typeof v === 'number');
-  if (materialId) {
-    const mm = MATERIAL_BY_ID.get(materialId)!.aliases.exec(base);
+  for (const m of MATERIALS) {
+    const mm = m.aliases.exec(base);
     if (mm) cuts.push(mm.index);
   }
   let name = cuts.length ? base.slice(0, Math.min(...cuts)) : base;
-  name = name.replace(/[\s_\-.]+$/, '').trim() || base;
+  // хвосты САПР: «(контур)», «(развёртка)»
+  name =
+    name
+      .replace(/[\s_\-.]+$/, '')
+      .replace(/(?:[\s_\-.]*\((?:контур|разв[её]ртка)\))+$/i, '')
+      .replace(/[\s_\-.]+$/, '')
+      .trim() || base;
   return { name, materialId, thickness: thickness && thickness > 0 && thickness < 200 ? thickness : null, qty: qty && qty > 0 ? qty : null };
 }

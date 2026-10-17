@@ -19,6 +19,15 @@ export interface PartGeometry {
 export interface Extra {
   label: string;
   perPiece: number; // ₽/шт
+  aiId?: string; // добавлена по предложению ИИ (AiSuggestion.id)
+}
+
+/** Справочная ставка доп. операции: по ней ИИ оценивает ₽/шт (покраска, резьба, сварка…) */
+export interface ExtraRate {
+  label: string;
+  unit: string; // «м²», «отв.», «м шва», «кг», «шт»
+  price: number; // ₽ за единицу с НДС
+  note?: string;
 }
 
 export interface Position {
@@ -69,6 +78,8 @@ export interface Settings {
   priceOverride: Record<string, number>; // `${mat}|${t}` → ₽/кг
   sheetChoice: Record<string, string>; // `${mat}|${t}` → 'W×L'
   matK: Record<string, { cutK?: number; bendK?: number }>; // поправки к материалам
+  extraRates: ExtraRate[]; // ставки доп. операций для ИИ-анализа
+  priceMaxAgeHours: number; // цены mc.ru старше — обновляются перед расчётом
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -124,6 +135,21 @@ export const DEFAULT_SETTINGS: Settings = {
   priceOverride: {},
   sheetChoice: {},
   matK: {},
+  // ориентировочные цены подрядчиков СПб, 2026 — правьте в «Расценках»
+  extraRates: [
+    { label: 'Порошковая покраска', unit: 'м²', price: 650, note: 'площадь с двух сторон' },
+    { label: 'Грунтовка / покраска эмалью', unit: 'м²', price: 350, note: 'площадь с двух сторон' },
+    { label: 'Горячее цинкование', unit: 'кг', price: 75 },
+    { label: 'Нарезка резьбы М3–М10', unit: 'отв.', price: 35 },
+    { label: 'Зенковка / фаска отверстия', unit: 'отв.', price: 20 },
+    { label: 'Запрессовка крепежа', unit: 'шт', price: 30, note: 'без стоимости крепежа' },
+    { label: 'Сварка полуавтоматом', unit: 'м шва', price: 700 },
+    { label: 'Сварка аргоном (нерж., алюминий)', unit: 'м шва', price: 1500 },
+    { label: 'Зачистка кромок', unit: 'м', price: 40 },
+    { label: 'Вальцовка', unit: 'шт', price: 400, note: 'простая обечайка; крупные — дороже' },
+    { label: 'Галтовка (снятие заусенцев)', unit: 'кг', price: 60 },
+  ],
+  priceMaxAgeHours: 24,
 };
 
 // ---------- цены металла ----------
@@ -135,6 +161,7 @@ export interface PriceItem {
   pricePerKg: number; // ₽/кг с НДС (розница)
   name: string;
   mark: string;
+  fetchedAt?: string; // когда взято с mc.ru (ISO); в старых снимках нет
 }
 
 export interface PriceBook {

@@ -1,6 +1,7 @@
 // Слияние результатов импорта: DXF и PDF одной детали — одна позиция
 // (контур точнее из DXF, гибы/материал/масса — из PDF), количество — из заявки.
 
+import { mergeDrawingTexts } from './core/drawingText.ts';
 import type { QtyLine } from './core/pdfAnalyze.ts';
 import type { OrderPosition } from './order.ts';
 import { newId } from './order.ts';
@@ -36,6 +37,7 @@ export function mergeImports(existing: OrderPosition[], dxf: OrderPosition[], pd
       guessed: { material: p.guessed.material && d.guessed.material, thickness: p.guessed.thickness && d.guessed.thickness, qty: p.guessed.qty && d.guessed.qty },
       source: 'dxf',
       pdf: p.pdf ? { ...p.pdf, geometryFromPdf: false } : undefined,
+      drawingText: mergeDrawingTexts(p.drawingText, d.drawingText),
     };
     notes.push(`${d.name}: контур из DXF, гибы и материал из PDF`);
   }
@@ -49,7 +51,7 @@ export function mergeImports(existing: OrderPosition[], dxf: OrderPosition[], pd
     }
     const p = list[i];
     const got: string[] = [];
-    const patch: Partial<OrderPosition> = { pdf: q.pdf ? { ...q.pdf, geometryFromPdf: false } : undefined };
+    const patch: Partial<OrderPosition> = { pdf: q.pdf ? { ...q.pdf, geometryFromPdf: false } : undefined, drawingText: mergeDrawingTexts(q.drawingText, p.drawingText) };
     if (p.bends === 0 && q.bends > 0) {
       patch.bends = q.bends;
       patch.detectedBends = q.bends;

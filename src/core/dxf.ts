@@ -16,12 +16,20 @@ export interface Prim {
   dashed: boolean;
 }
 
+/** Строка TEXT/MTEXT/ATTRIB как в файле (коды MTEXT не очищены) — для текста чертежа в ИИ-анализе */
+export interface DxfLabel {
+  x: number;
+  y: number;
+  str: string;
+}
+
 export interface DxfDrawing {
   prims: Prim[];
   texts: Vec[];
   version: string;
   insUnits: number; // $INSUNITS: 4 = мм, 1 = дюймы, 0 = не задано
   warnings: string[];
+  labels?: DxfLabel[];
 }
 
 type Pair = [number, string];
@@ -346,6 +354,7 @@ export function parseDxf(buf: ArrayBuffer): DxfDrawing {
   const P = parse(text);
   const prims: Prim[] = [];
   const texts: Vec[] = [];
+  const labels: DxfLabel[] = [];
   const warnings: string[] = [];
   const unknown = new Set<string>();
   const insUnits = parseInt(P.header.get('$INSUNITS') ?? '0', 10) || 0;
@@ -472,7 +481,20 @@ export function parseDxf(buf: ArrayBuffer): DxfDrawing {
         }
         case 'TEXT':
         case 'MTEXT': {
-          texts.push(apply(M, { x: num(e, 10), y: num(e, 20) }));
+          const at = apply(M, { x: num(e, 10), y: num(e, 20) });
+          texts.push(at);
+          // MTEXT длиннее 250 символов: начало в кодах 3, хвост в коде 1
+          const s = e.type === 'MTEXT' ? e.pairs.filter((p) => p[0] === 3).map((p) => p[1]).join('') + str(e, 1) : str(e, 1);
+          if (s.trim()) labels.push({ x: at.x, y: at.y, str: s });
+          break;
+        }
+        case 'ATTRIB': {
+          // значения атрибутов блоков (штамп); на геометрию не влияют
+          const s = str(e, 1);
+          if (s.trim() && !(num(e, 70) & 1)) {
+            const at = apply(M, { x: num(e, 10), y: num(e, 20) });
+            labels.push({ x: at.x, y: at.y, str: s });
+          }
           break;
         }
         case 'INSERT': {
@@ -527,7 +549,11 @@ export function parseDxf(buf: ArrayBuffer): DxfDrawing {
       t.x *= 25.4;
       t.y *= 25.4;
     }
+    for (const t of labels) {
+      t.x *= 25.4;
+      t.y *= 25.4;
+    }
     warnings.push('Чертёж в дюймах — пересчитан в мм');
   }
-  return { prims, texts, version: P.header.get('$ACADVER') ?? '?', insUnits, warnings };
+  return { prims, texts, version: P.header.get('$ACADVER') ?? '?', insUnits, warnings, labels };
 }

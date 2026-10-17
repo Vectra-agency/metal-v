@@ -1,10 +1,12 @@
 // Состояние заказа: позиции, импорт DXF, сохранение в браузере.
 
+import type { AiDocument, AiState } from './core/ai.ts';
+import { dxfText } from './core/drawingText.ts';
 import { parseDxf, type Vec } from './core/dxf.ts';
 import { analyze, metricsOf, type Analysis } from './core/geometry.ts';
 import { parseFileName, MATERIAL_BY_ID } from './core/materials.ts';
 import { DEFAULT_SETTINGS, type Position, type PriceBook, type Settings } from './core/pricing.ts';
-import type { PdfMeta } from './core/pdfAnalyze.ts';
+import type { PdfMeta, QtyLine } from './core/pdfAnalyze.ts';
 
 export interface Preview {
   outer: number[][]; // плоские массивы x0,y0,x1,y1…
@@ -29,7 +31,18 @@ export interface OrderPosition extends Position {
   detectedBends: number;
   source?: 'dxf' | 'pdf' | 'manual';
   pdf?: PdfInfo;
+  drawingText?: string; // текст с чертежа для ИИ: технические требования, штамп, надписи (обрезан)
 }
+
+/** Запись журнала загрузки (что прочитано, пропущено, не распознано) */
+export interface JournalEntry {
+  at: string; // ISO
+  level: 'info' | 'warn' | 'error';
+  text: string;
+}
+
+/** Сколько записей журнала хранить (последние) */
+export const JOURNAL_MAX = 200;
 
 export interface Order {
   title: string;
@@ -39,11 +52,51 @@ export interface Order {
   markupPct: number;
   delivery: number;
   v?: number; // версия формата: 2 — наценка по умолчанию 50 %
+  request?: string; // текст заявки клиента, вставленный вручную
+  documents?: AiDocument[]; // тексты без чертежа: .txt, листы PDF с заявкой/спецификацией
+  requestLines?: QtyLine[]; // строки «обозначение — N шт» из заявок в PDF (для сверки в ИИ-анализе)
+  ai?: AiState; // анализ ИИ и решения по его предложениям (поверх позиций, позиции не меняет)
+  checks?: Record<string, string>; // id замечания (с отпечатком значения) → когда нажато «Верно», ISO
+  aiScope?: string[]; // id позиций, которые видел последний применённый анализ ИИ (≤ 150)
+  journal?: JournalEntry[]; // журнал загрузки, новые в конце, не больше JOURNAL_MAX
 }
 
 export const DEFAULT_MARKUP_PCT = 50;
 
-export const emptyOrder = (): Order => ({ title: '', positions: [], sheetChoice: {}, priceOverride: {}, markupPct: DEFAULT_MARKUP_PCT, delivery: 0, v: 2 });
+export const emptyOrder = (): Order => ({
+  title: '',
+  positions: [],
+  sheetChoice: {},
+  priceOverride: {},
+  markupPct: DEFAULT_MARKUP_PCT,
+  delivery: 0,
+  v: 2,
+  request: '',
+  documents: [],
+  requestLines: [],
+  checks: {},
+  aiScope: [],
+  journal: [],
+});
+
+/** Справочник цен до загрузки (и если загрузить не удалось): считаем по ценам материалов по умолчанию */
+export const EMPTY_BOOK: PriceBook = { updatedAt: null, region: 'Санкт-Петербург', materials: {} };
+
+/** Ключи PDF в IndexedDB, на которые ссылаются позиции заказа */
+export function orderFileKeys(o: Order): Set<string> {
+  const keys = new Set<string>();
+  for (const p of o.positions) if (p.pdf?.fileKey) keys.add(p.pdf.fileKey);
+  return keys;
+}
+
+/** Расценки с параметрами заказа (лист, цена вручную, наценка, доставка) — как их видит computeOrder */
+export const orderSettings = (o: Order, s: Settings): Settings => ({
+  ...s,
+  sheetChoice: o.sheetChoice,
+  priceOverride: o.priceOverride,
+  markupPct: o.markupPct,
+  delivery: o.delivery,
+});
 
 let seq = 0;
 export const newId = () => `p${Date.now().toString(36)}${(seq++).toString(36)}`;
@@ -118,18 +171,22 @@ export interface ImportDefaults {
 }
 
 export async function importDxf(file: File, defs: ImportDefaults): Promise<OrderPosition> {
-  const buf = await file.arrayBuffer();
+  return positionFromDxf(await file.arrayBuffer(), file.name, defs);
+}
+
+/** Позиция из содержимого DXF (без File — для Node-скриптов) */
+export function positionFromDxf(buf: ArrayBuffer, fileName: string, defs: ImportDefaults): OrderPosition {
   const dwg = parseDxf(buf);
   const an = analyze(dwg);
   const m = metricsOf(an.parts, an.bends);
-  const pn = parseFileName(file.name);
+  const pn = parseFileName(fileName);
   const warnings = [...dwg.warnings, ...an.warnings];
   if (m.count > 1) warnings.push(`В файле ${m.count} отдельных контура — считаются как один комплект на 1 шт.`);
   if (!dwg.insUnits && Math.max(m.width, m.height) < 20 && m.count) warnings.push('Очень мелкий габарит — проверьте единицы чертежа (мм?)');
   return {
     id: newId(),
     name: pn.name,
-    fileName: file.name,
+    fileName,
     materialId: pn.materialId ?? defs.materialId,
     thickness: pn.thickness ?? defs.thickness,
     qty: pn.qty ?? 1,
@@ -150,6 +207,7 @@ export async function importDxf(file: File, defs: ImportDefaults): Promise<Order
     guessed: { material: !pn.materialId, thickness: !pn.thickness, qty: !pn.qty },
     detectedBends: m.bendCount,
     source: 'dxf',
+    drawingText: dxfText(dwg.labels ?? []) || undefined,
   };
 }
 
@@ -229,16 +287,59 @@ export async function filesFromDrop(dt: DataTransfer): Promise<File[]> {
 const K_ORDER = 'metalcalc.order.v1';
 const K_SETTINGS = 'metalcalc.settings.v1';
 
+const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
+const num = (v: unknown, def: number) => (typeof v === 'number' && Number.isFinite(v) ? v : def);
+
+/** Позиция из хранилища: обязательные поля на месте, иначе позиция отбрасывается (null) */
+function normalizePosition(raw: unknown): OrderPosition | null {
+  if (!isObj(raw)) return null;
+  const p = raw as unknown as OrderPosition;
+  if (typeof p.id !== 'string' || !MATERIAL_BY_ID.has(p.materialId) || !isObj(p.geom)) return null;
+  const g = isObj(p.guessed) ? p.guessed : null;
+  return {
+    ...p,
+    name: typeof p.name === 'string' ? p.name : String(p.fileName ?? p.id),
+    thickness: num(p.thickness, 2),
+    qty: num(p.qty, 1),
+    bends: num(p.bends, 0),
+    bendLength: num(p.bendLength, 0),
+    extras: Array.isArray(p.extras) ? p.extras.filter((e) => isObj(e) && typeof e.label === 'string') : [],
+    warnings: Array.isArray(p.warnings) ? p.warnings.filter((w) => typeof w === 'string') : [],
+    guessed: { material: !!g?.material, thickness: !!g?.thickness, qty: !!g?.qty },
+    detectedBends: num(p.detectedBends, 0),
+  };
+}
+
+const isLevel = (v: unknown): v is JournalEntry['level'] => v === 'info' || v === 'warn' || v === 'error';
+
+/** Приводит сохранённый заказ (в т.ч. старого формата) к текущему: новые поля необязательны и проверяются */
+export function normalizeOrder(raw: unknown): Order {
+  const o = { ...(isObj(raw) ? (raw as unknown as Order) : emptyOrder()) };
+  // раньше наценка по умолчанию была 0 % — в таких заказах ставим новую
+  if (!o.v && !o.markupPct) o.markupPct = DEFAULT_MARKUP_PCT;
+  o.markupPct = num(o.markupPct, DEFAULT_MARKUP_PCT);
+  o.delivery = num(o.delivery, 0);
+  if (typeof o.title !== 'string') o.title = '';
+  if (!isObj(o.sheetChoice)) o.sheetChoice = {};
+  if (!isObj(o.priceOverride)) o.priceOverride = {};
+  o.positions = (Array.isArray(o.positions) ? o.positions : []).map(normalizePosition).filter((p): p is OrderPosition => !!p);
+  o.documents = Array.isArray(o.documents) ? o.documents.filter((d) => d && typeof d.fileName === 'string' && typeof d.text === 'string') : [];
+  o.requestLines = Array.isArray(o.requestLines) ? o.requestLines.filter((l) => l && typeof l.designation === 'string' && Number(l.qty) > 0) : [];
+  if (typeof o.request !== 'string') o.request = '';
+  const ai = o.ai;
+  if (ai && !(ai.analysis && Array.isArray(ai.analysis.positions) && ai.accepted && typeof ai.accepted === 'object' && typeof ai.contextHash === 'string')) delete o.ai;
+  o.checks = isObj(o.checks) ? Object.fromEntries(Object.entries(o.checks).filter(([, v]) => typeof v === 'string')) : {};
+  o.aiScope = Array.isArray(o.aiScope) ? o.aiScope.filter((id) => typeof id === 'string') : [];
+  o.journal = Array.isArray(o.journal)
+    ? o.journal.filter((e) => isObj(e) && typeof e.at === 'string' && typeof e.text === 'string' && isLevel(e.level)).slice(-JOURNAL_MAX)
+    : [];
+  return { ...emptyOrder(), ...o };
+}
+
 export function loadOrder(): Order {
   try {
     const raw = localStorage.getItem(K_ORDER);
-    if (raw) {
-      const o = JSON.parse(raw) as Order;
-      // раньше наценка по умолчанию была 0 % — в таких заказах ставим новую
-      if (!o.v && !o.markupPct) o.markupPct = DEFAULT_MARKUP_PCT;
-      o.positions = o.positions.filter((p) => MATERIAL_BY_ID.has(p.materialId));
-      return { ...emptyOrder(), ...o };
-    }
+    if (raw) return normalizeOrder(JSON.parse(raw));
   } catch {
     /* нет доступа к хранилищу — начинаем с пустого */
   }
@@ -250,12 +351,17 @@ export function saveOrder(o: Order): string | null {
     localStorage.setItem(K_ORDER, JSON.stringify(o));
     return null;
   } catch {
-    // не влезло — сохраняем без превью
+    // не влезло — сохраняем без превью, потом и без текстов чертежей
     try {
       localStorage.setItem(K_ORDER, JSON.stringify({ ...o, positions: o.positions.map((p) => ({ ...p, preview: undefined })) }));
       return 'Заказ большой — эскизы деталей не сохранятся после перезагрузки';
     } catch {
-      return 'Не удалось сохранить заказ в браузере';
+      try {
+        localStorage.setItem(K_ORDER, JSON.stringify({ ...o, documents: [], positions: o.positions.map((p) => ({ ...p, preview: undefined, drawingText: undefined })) }));
+        return 'Заказ большой — эскизы и тексты чертежей не сохранятся после перезагрузки';
+      } catch {
+        return 'Не удалось сохранить заказ в браузере';
+      }
     }
   }
 }
@@ -291,13 +397,30 @@ export async function fetchPrices(): Promise<{ book: PriceBook; live: boolean }>
   return { book: await r.json(), live: false };
 }
 
-export async function refreshPricesApi(pairs: [string, number][] | null): Promise<{ book: PriceBook; errors: string[] }> {
-  const r = await fetch('/api/prices/refresh', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ pairs }),
-  });
-  const j = await r.json();
-  if (!r.ok) throw new Error(j.error ?? `Ошибка ${r.status}`);
-  return j;
+/** Ошибка API цен; status 0 — нет ответа сервера (сеть, статическая версия) */
+export class PriceApiError extends Error {
+  readonly status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'PriceApiError';
+    this.status = status;
+  }
+}
+
+export async function refreshPricesApi(pairs: [string, number][] | null, signal?: AbortSignal): Promise<{ book: PriceBook; errors: string[] }> {
+  let r: Response;
+  try {
+    r = await fetch('/api/prices/refresh', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pairs }),
+      signal,
+    });
+  } catch (e) {
+    if ((e as Error).name === 'AbortError') throw e;
+    throw new PriceApiError('нет связи с сервером', 0);
+  }
+  const j = (await r.json().catch(() => null)) as { book?: PriceBook; errors?: string[]; error?: string } | null;
+  if (!r.ok || !j?.book) throw new PriceApiError(j?.error ?? `Ошибка ${r.status}`, r.status);
+  return { book: j.book, errors: Array.isArray(j.errors) ? j.errors : [] };
 }

@@ -1,6 +1,8 @@
 // Импорт PDF-чертежей в браузере: pdf.js грузится только при первом PDF,
 // исходный файл сохраняется в IndexedDB, чтобы чертёж можно было открыть позже.
 
+import type { AiDocument } from './core/ai.ts';
+import { documentTextFromPdf, drawingTextFromPdf } from './core/drawingText.ts';
 import type { Vec } from './core/dxf.ts';
 import { getMaterial, kgPerM2, parseFileName } from './core/materials.ts';
 import { readPdf, type PdfJsLike, type PdfPageData } from './core/pdf.ts';
@@ -17,22 +19,58 @@ import {
   type PdfMeta,
   type QtyLine,
 } from './core/pdfAnalyze.ts';
-import { getFile, putFile } from './idb.ts';
+import { getFile, hasFile, putFile } from './idb.ts';
 import { flat, newId, type ImportDefaults, type OrderPosition, type Preview } from './order.ts';
 
 type PdfLib = PdfJsLike & { GlobalWorkerOptions: { workerSrc: string } };
 let lib: Promise<PdfLib> | null = null;
 
+/** Файл модуля не загрузился: после выкладки новой версии в открытой вкладке старых файлов уже нет */
+export const APP_UPDATED = 'Приложение обновилось — обновите страницу';
+const RE_CHUNK = /Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module/i;
+const errText = (e: unknown) => (typeof e === 'object' && e !== null ? String((e as { message?: unknown }).message ?? '') : String(e));
+
+// Не загрузившийся модуль браузер по тому же адресу больше не запрашивает (помнит отказ до перезагрузки страницы):
+// повтор — по тому же адресу с ?retry=…, адрес берётся из текста ошибки (Chrome, Firefox)
+const failedUrl = new Map<string, string>();
+
+async function loadModule<T>(id: string, load: () => Promise<T>): Promise<T> {
+  const url = failedUrl.get(id);
+  try {
+    if (!url) return await load();
+    const again = `${url}${url.includes('?') ? '&' : '?'}retry=${Date.now()}`;
+    return (await import(/* @vite-ignore */ again)) as T;
+  } catch (e) {
+    const m = /dynamically imported module:?\s+(\S+)/i.exec(errText(e));
+    if (!url && m) failedUrl.set(id, m[1]);
+    throw e;
+  }
+}
+
 export function pdfjs(): Promise<PdfLib> {
   if (!lib) {
     lib = (async () => {
-      const m = (await import('pdfjs-dist')) as unknown as PdfLib;
-      const worker = (await import('pdfjs-dist/build/pdf.worker.min.mjs?url')).default;
+      const m = (await loadModule('pdfjs', () => import('pdfjs-dist'))) as unknown as PdfLib;
+      const worker = (await loadModule('worker', () => import('pdfjs-dist/build/pdf.worker.min.mjs?url'))).default;
       m.GlobalWorkerOptions.workerSrc = worker;
       return m;
-    })();
+    })().catch((e: unknown) => {
+      lib = null; // отказ не запоминаем: следующий PDF попробует загрузить pdf.js снова
+      throw RE_CHUNK.test(errText(e)) ? new Error(APP_UPDATED) : e;
+    });
   }
   return lib;
+}
+
+/** Ошибка pdf.js → по-русски, для журнала: «файл.pdf: не PDF или файл повреждён» */
+export function pdfErrorText(e: unknown): string {
+  const name = typeof e === 'object' && e !== null ? String((e as { name?: unknown }).name ?? '') : '';
+  const msg = errText(e);
+  if (msg === APP_UPDATED || RE_CHUNK.test(msg)) return APP_UPDATED;
+  if (/The PDF file is empty/i.test(msg)) return 'пустой файл';
+  if (name === 'PasswordException') return 'PDF защищён паролем';
+  if (name === 'InvalidPDFException' || /Invalid PDF structure/i.test(msg)) return 'не PDF или файл повреждён';
+  return 'не удалось прочитать PDF';
 }
 
 const PT = 25.4 / 72;
@@ -41,6 +79,7 @@ export interface PdfImportResult {
   positions: OrderPosition[];
   qty: QtyLine[];
   notes: string[];
+  documents: AiDocument[]; // текст листов без чертежа (заявка, спецификация, счёт)
 }
 
 /** Ключ обозначения для сопоставления DXF, PDF и заявки */
@@ -101,12 +140,12 @@ export function pdfCheck(p: OrderPosition): PdfCheck | null {
   return { calc: variants[0].m, drawing, ratio, status: dev <= 0.06 ? 'ok' : dev <= 0.15 ? 'warn' : 'bad', densityNote: best === variants[0] ? '' : best.note };
 }
 
-function scanPosition(file: File, fileKey: string, defs: ImportDefaults, pages: number): OrderPosition {
-  const pn = parseFileName(file.name);
+function scanPosition(fileName: string, fileKey: string, defs: ImportDefaults, pages: number): OrderPosition {
+  const pn = parseFileName(fileName);
   return {
     id: newId(),
     name: pn.name,
-    fileName: file.name,
+    fileName,
     materialId: pn.materialId ?? defs.materialId,
     thickness: pn.thickness ?? defs.thickness,
     qty: pn.qty ?? 1,
@@ -120,7 +159,7 @@ function scanPosition(file: File, fileKey: string, defs: ImportDefaults, pages: 
     source: 'pdf',
     pdf: {
       meta: {
-        fileName: file.name,
+        fileName,
         page: 0,
         pages,
         scale: 1,
@@ -138,12 +177,38 @@ function scanPosition(file: File, fileKey: string, defs: ImportDefaults, pages: 
   };
 }
 
+/** Ключ файла в IndexedDB */
+export const pdfFileKey = (f: { name: string; size: number; lastModified: number }) => `pdf:${f.name}:${f.size}:${f.lastModified}`;
+
 export async function importPdf(file: File, defs: ImportDefaults): Promise<PdfImportResult> {
   const buf = await file.arrayBuffer();
-  const fileKey = `pdf:${file.name}:${file.size}:${file.lastModified}`;
-  const pages = await readPdf(await pdfjs(), buf);
-  await putFile(fileKey, buf);
-  const pn = parseFileName(file.name);
+  const fileKey = pdfFileKey(file);
+  let pages: PdfPageData[];
+  try {
+    pages = await readPdf(await pdfjs(), buf);
+  } catch (e) {
+    const text = pdfErrorText(e);
+    if (text === 'не удалось прочитать PDF') console.warn(`pdf.js: ${file.name}:`, e);
+    throw new Error(text);
+  }
+  const r = positionsFromPages(pages, file.name, fileKey, defs);
+  // хранится только PDF с чертежами: листы без чертежа (счёт, заявка) — текстом в документах
+  if (r.positions.length) await putFile(fileKey, buf);
+  return r;
+}
+
+/** PDF позиции пропал из браузера (очищено хранилище, удалила другая вкладка) — записать тот же файл под её ключом.
+ *  true — файла не было и он записан; файл на месте или хранилище недоступно — false */
+export async function restorePdf(file: File, key: string): Promise<boolean> {
+  if ((await hasFile(key)) !== false) return false;
+  if (!(await putFile(key, await file.arrayBuffer()))) return false;
+  forget(key);
+  return true;
+}
+
+/** Позиции, строки заявки и документы из прочитанных страниц PDF (чистая часть импорта — работает и в Node) */
+export function positionsFromPages(pages: PdfPageData[], fileName: string, fileKey: string, defs: ImportDefaults): PdfImportResult {
+  const pn = parseFileName(fileName);
   const fileDesig = findDesignation(pn.name) ?? undefined;
   const groups = groupDrawings(pages);
   const notes: string[] = [];
@@ -154,10 +219,16 @@ export async function importPdf(file: File, defs: ImportDefaults): Promise<PdfIm
   for (const g of groups) {
     // одно обозначение на файл — берём из имени (там бывает номер исполнения), иначе из штампа
     const desig = groups.length === 1 ? (fileDesig ?? g.designation) : (g.designation ?? fileDesig);
-    const an = analyzePdf(g.pages, file.name, desig);
+    const an = analyzePdf(g.pages, fileName, desig);
     if (!an.meta) {
-      if (an.scan) positions.push(scanPosition(file, fileKey, defs, pages.length));
-      else listPages.push(...g.pages);
+      if (an.scan) {
+        const scan = scanPosition(fileName, fileKey, defs, pages.length);
+        const text = drawingTextFromPdf(g.pages);
+        if (text) scan.drawingText = text;
+        // скан: показываем ту страницу, с которой начинается чертёж
+        scan.pdf!.meta.page = g.pages[0]?.index ?? 0;
+        positions.push(scan);
+      } else listPages.push(...g.pages);
       continue;
     }
     const meta = an.meta;
@@ -178,7 +249,7 @@ export async function importPdf(file: File, defs: ImportDefaults): Promise<PdfIm
     const base: OrderPosition = {
       id: newId(),
       name,
-      fileName: file.name,
+      fileName,
       materialId: T.materialId ?? pn.materialId ?? defs.materialId,
       thickness: T.thickness ?? pn.thickness ?? defs.thickness,
       qty: pn.qty ?? 1,
@@ -191,12 +262,16 @@ export async function importPdf(file: File, defs: ImportDefaults): Promise<PdfIm
       detectedBends: 0,
       source: 'pdf',
       pdf: { meta, fileKey, geometryFromPdf: true, notes: T.materialText ? [`материал в штампе: ${T.materialText}`] : [] },
+      drawingText: drawingTextFromPdf(g.pages) || undefined,
     };
     positions.push({ ...base, ...geometryPatch(meta) });
   }
   const qty = readQtyList(listPages);
-  if (listPages.length && !qty.length && !positions.length) notes.push(`${file.name}: чертежа и списка деталей не найдено`);
-  return { positions, qty, notes };
+  const documents: AiDocument[] = [];
+  const docText = listPages.length ? documentTextFromPdf(listPages) : '';
+  if (docText) documents.push({ fileName, text: docText });
+  if (listPages.length && !qty.length && !positions.length) notes.push(`${fileName}: чертежа и списка деталей не найдено${docText ? ' — текст передан в анализ как документ' : ''}`);
+  return { positions, qty, notes, documents };
 }
 
 // ---------- просмотр и ручная правка ----------
@@ -213,6 +288,8 @@ async function openDoc(fileKey: string): Promise<any | null> {
       return m.getDocument({ data: new Uint8Array(buf), isEvalSupported: false }).promise;
     })();
     docs.set(fileKey, d);
+    // ошибку (pdf.js не загрузился) не запоминаем — следующий показ попробует снова
+    d.catch(() => docs.get(fileKey) === d && docs.delete(fileKey));
   }
   const doc = await d;
   if (!doc) docs.delete(fileKey);
@@ -235,6 +312,20 @@ export async function renderPage(fileKey: string, pageIndex: number, canvas: HTM
   return { w: vp1.width * PT, h: vp1.height * PT };
 }
 
+/** Рисует страницу в canvas так, чтобы длинная сторона была maxSidePx (для изображений чертежей в ИИ) */
+export async function renderPageFit(fileKey: string, pageIndex: number, canvas: HTMLCanvasElement, maxSidePx: number): Promise<{ w: number; h: number } | null> {
+  const doc = await openDoc(fileKey);
+  if (!doc) return null;
+  const page = await doc.getPage(pageIndex + 1);
+  const vp1 = page.getViewport({ scale: 1 });
+  const vp = page.getViewport({ scale: maxSidePx / Math.max(vp1.width, vp1.height) });
+  canvas.width = Math.round(vp.width);
+  canvas.height = Math.round(vp.height);
+  await page.render({ canvas, viewport: vp, background: '#ffffff' }).promise;
+  page.cleanup?.();
+  return { w: vp1.width * PT, h: vp1.height * PT };
+}
+
 export interface Reanalysis {
   pages: PdfPageData[];
   an: PdfAnalysis;
@@ -247,7 +338,7 @@ export function reanalyze(p: OrderPosition): Promise<Reanalysis | null> {
   const key = `${p.pdf!.fileKey}|${p.name}`;
   let r = reCache.get(key);
   if (!r) {
-    r = (async () => {
+    const job = (async () => {
       const buf = await getFile(p.pdf!.fileKey);
       if (!buf) return null;
       const all = await readPdf(await pdfjs(), buf);
@@ -255,9 +346,21 @@ export function reanalyze(p: OrderPosition): Promise<Reanalysis | null> {
       const g = groups.find((x) => x.pages.some((pg) => pg.index === p.pdf!.meta.page)) ?? groups[0];
       return { pages: g.pages, an: analyzePdf(g.pages, p.pdf!.meta.fileName, p.name) };
     })();
-    reCache.set(key, r);
+    r = job;
+    reCache.set(key, job);
+    // нет файла или ошибка — не запоминаем: файл могут вернуть (перетащить ещё раз), pdf.js — загрузиться
+    job.then(
+      (v) => v === null && reCache.get(key) === job && reCache.delete(key),
+      () => reCache.get(key) === job && reCache.delete(key),
+    );
   }
   return r;
+}
+
+/** Файл записан заново — забыть прочитанное из него раньше */
+function forget(fileKey: string): void {
+  docs.delete(fileKey);
+  for (const k of reCache.keys()) if (k.startsWith(`${fileKey}|`)) reCache.delete(k);
 }
 
 /** Новый вид и/или масштаб для позиции */

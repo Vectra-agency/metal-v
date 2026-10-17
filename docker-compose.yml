@@ -13,6 +13,18 @@ services:
     image: metal-v:latest
     ports:
       - '127.0.0.1:${METAL_PORT:-61890}:8787'
+    # ИИ-анализ (server/llm.ts): значения берутся из /var/www/metal-v/.env (в git его нет, деплой его
+    # не трогает; образец — .env.example). Пусто — анализ ИИ выключен, расчёт работает как раньше.
+    # После правки .env: docker compose up -d (контейнер пересоздаётся с новыми переменными).
+    environment:
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_FALLBACK_MODELS: ${LLM_FALLBACK_MODELS:-}
+      LLM_TIMEOUT_MS: ${LLM_TIMEOUT_MS:-}
+      LLM_MAX_TOKENS: ${LLM_MAX_TOKENS:-}
+      LLM_VISION: ${LLM_VISION:-}
+      LLM_JSON: ${LLM_JSON:-}
     volumes:
       - ./data:/app/data # рабочие цены mc.ru (data/prices.json) переживают пересборку
     restart: unless-stopped

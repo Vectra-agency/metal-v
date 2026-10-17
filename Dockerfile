@@ -22,4 +22,6 @@ EXPOSE 8787
 # sha коммита → /api/health; в конце, чтобы не сбрасывать кэш слоёв выше
 ARG GIT_SHA=dev
 ENV GIT_SHA=$GIT_SHA
-CMD ["node", "server/index.ts"]
+# куча V8 меньше лимита контейнера (256 МБ): по умолчанию Node берёт ~262 МБ и ядро убивает процесс
+# раньше, чем сработает сборка мусора; изображения задач ИИ (Buffer) лежат вне кучи
+CMD ["node", "--max-old-space-size=192", "server/index.ts"]

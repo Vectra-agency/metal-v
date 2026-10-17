@@ -79,6 +79,8 @@ async function getHtml(url: string): Promise<string> {
 }
 
 export function rowsToItems(mat: Material, t: number, rows: McRow[], unit: 't' | 'kg', region: string): PriceItem[] {
+  // NaN подошёл бы к любой строке (сравнение ниже ложно), а замена толщины стёрла бы цены материала
+  if (!Number.isFinite(t)) return [];
   const city = REGIONS[region] ?? region;
   const markRe = mat.mc.mark ? new RegExp(mat.mc.mark, 'i') : null;
   const nameRe = mat.mc.name ? new RegExp(mat.mc.name, 'i') : null;
@@ -110,7 +112,9 @@ export function rowsToItems(mat: Material, t: number, rows: McRow[], unit: 't' |
 export async function fetchMaterialThickness(mat: Material, t: number, region = 'speterburg'): Promise<PriceItem[]> {
   const html = await getHtml(mcUrl(mat.mc.category, t, region));
   const { rows, unit } = parseMcHtml(html);
-  return rowsToItems(mat, t, rows, unit, region);
+  // дата снятия цены — по ней клиент решает, не пора ли обновить эту толщину
+  const fetchedAt = new Date().toISOString();
+  return rowsToItems(mat, t, rows, unit, region).map((i) => ({ ...i, fetchedAt }));
 }
 
 export interface RefreshProgress {
@@ -119,7 +123,8 @@ export interface RefreshProgress {
   errors: string[];
 }
 
-/** Обновляет цены по списку пар [материал, толщина]; без списка — весь справочник */
+/** Обновляет цены по списку пар [материал, толщина]; без списка — весь справочник (только scripts/update-prices.ts:
+ *  HTTP-запрос всегда с проверенным списком, см. refreshPairs в server/api.ts) */
 export async function refreshPrices(
   base: PriceBook,
   pairs: [string, number][] | null,
@@ -130,7 +135,8 @@ export async function refreshPrices(
   if (pairs?.length) {
     for (const [id, t] of pairs) {
       const m = MATERIALS.find((x) => x.id === id);
-      if (m) jobs.push([m, t]);
+      // толщина — положительное число: строка («2#», «../x») ушла бы в адрес mc.ru
+      if (m && typeof t === 'number' && Number.isFinite(t) && t > 0) jobs.push([m, t]);
     }
   } else {
     for (const m of MATERIALS) for (const t of m.thicknesses) jobs.push([m, t]);

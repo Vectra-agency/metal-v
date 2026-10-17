@@ -1,0 +1,62 @@
+/* Печать (ui-spec §7.1): по умолчанию — КП для клиента (html[data-print='client']), из меню «Ещё» — внутренний расчёт
+   (html[data-print='internal'], альбомный лист). Размер листа задаёт <style id="print-page"> из PrintRoot. */
+@media screen {
+  .print-root {
+    display: none !important;
+  }
+}
+
+@media print {
+  /* открытый диалог блокирует прокрутку (overflow: hidden) — печать не должна обрезаться одной страницей */
+  html,
+  body {
+    overflow: visible !important;
+    height: auto !important;
+  }
+  body > *:not(#root) {
+    display: none !important; /* порталы Radix, уведомления */
+  }
+  #root > .screen-only {
+    display: none !important;
+  }
+  html[data-print='client'] .print-internal,
+  html[data-print='internal'] .print-client {
+    display: none !important;
+  }
+  .print-root {
+    display: block !important;
+    color: #000;
+    background: #fff;
+    font-size: 10pt;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .print-root table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .print-root thead {
+    display: table-header-group;
+  }
+  /* итоги — один раз в конце таблицы: Chrome повторяет tfoot внизу каждой страницы */
+  .print-root tfoot {
+    display: table-row-group;
+  }
+  .print-root tr,
+  .print-root .avoid-break {
+    break-inside: avoid;
+  }
+  .print-root th,
+  .print-root td {
+    border-bottom: 0.5pt solid #bbb;
+    padding: 3pt 4pt;
+  }
+  .print-root tfoot td {
+    border-bottom: 0;
+  }
+  .print-root .num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+}

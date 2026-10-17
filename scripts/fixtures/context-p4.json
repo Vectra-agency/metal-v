@@ -1,0 +1,951 @@
+{
+  "version": 1,
+  "createdAt": "2026-10-16T10:00:00.000Z",
+  "order": {
+    "title": "НГ-Энерго — канал, корпус, лист опоры, листы зашивочные",
+    "request": "Добрый день! Прошу выставить счёт на изготовление деталей по чертежам во вложении:\nНГЭН.745535.0021-01 - 5 шт\nНГЭН.А86.11.11.1201 - 5 шт\nНГЭН.А86.11.13.0002 - 5 шт.\nНГЭН.А86.11.13.0002-01 - 5 шт.\nНГЭН.А86.11.13.0004 - 5 шт.\nНГЭН.745421.0001 - 5 шт.\nСроки — желательно до конца месяца. ООО «НГ-Энерго», отдел снабжения.",
+    "markupPct": 50,
+    "delivery": 0,
+    "vatPct": 22,
+    "region": "Санкт-Петербург",
+    "pricesUpdatedAt": "2026-10-14T15:38:30.275Z"
+  },
+  "materials": [
+    {
+      "id": "st3",
+      "label": "Ст3 горячекатаный",
+      "short": "Ст3",
+      "density": 7850,
+      "policy": "length",
+      "thicknesses": [
+        1.5,
+        2,
+        2.5,
+        3,
+        4,
+        5,
+        6,
+        8,
+        10,
+        12,
+        14,
+        16,
+        20,
+        25
+      ]
+    },
+    {
+      "id": "08ps",
+      "label": "08пс холоднокатаный",
+      "short": "08пс х/к",
+      "density": 7850,
+      "policy": "length",
+      "thicknesses": [
+        0.5,
+        0.7,
+        0.8,
+        1,
+        1.2,
+        1.5,
+        2,
+        2.5,
+        3
+      ]
+    },
+    {
+      "id": "09g2s",
+      "label": "09Г2С",
+      "short": "09Г2С",
+      "density": 7850,
+      "policy": "length",
+      "thicknesses": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        8,
+        10,
+        12,
+        14,
+        16,
+        20,
+        25,
+        30
+      ]
+    },
+    {
+      "id": "rifl",
+      "label": "Рифлёный Ст3 (ромб/чечевица)",
+      "short": "Рифл. Ст3",
+      "density": 7850,
+      "policy": "length",
+      "thicknesses": [
+        2,
+        2.5,
+        3,
+        4,
+        5,
+        6,
+        8,
+        10
+      ]
+    },
+    {
+      "id": "ocink",
+      "label": "Оцинкованная сталь",
+      "short": "Оцинк.",
+      "density": 7850,
+      "policy": "length",
+      "thicknesses": [
+        0.5,
+        0.7,
+        0.8,
+        1,
+        1.2,
+        1.5,
+        2,
+        2.5,
+        3
+      ]
+    },
+    {
+      "id": "aisi304",
+      "label": "Нерж. AISI 304 (08Х18Н10)",
+      "short": "AISI 304",
+      "density": 7900,
+      "policy": "whole",
+      "thicknesses": [
+        0.5,
+        0.8,
+        1,
+        1.5,
+        2,
+        3,
+        4,
+        5,
+        6,
+        8,
+        10
+      ]
+    },
+    {
+      "id": "aisi321",
+      "label": "Нерж. AISI 321 (12Х18Н10Т)",
+      "short": "AISI 321",
+      "density": 7900,
+      "policy": "whole",
+      "thicknesses": [
+        0.5,
+        0.8,
+        1,
+        1.5,
+        2,
+        3,
+        4,
+        5,
+        6,
+        8,
+        10
+      ]
+    },
+    {
+      "id": "aisi430",
+      "label": "Нерж. AISI 430 (08Х17)",
+      "short": "AISI 430",
+      "density": 7700,
+      "policy": "whole",
+      "thicknesses": [
+        0.5,
+        0.8,
+        1,
+        1.5,
+        2,
+        3
+      ]
+    },
+    {
+      "id": "amg2",
+      "label": "Алюминий АМг2",
+      "short": "АМг2",
+      "density": 2680,
+      "policy": "whole",
+      "thicknesses": [
+        0.5,
+        0.8,
+        1,
+        1.5,
+        2,
+        2.5,
+        3,
+        4,
+        5,
+        6
+      ]
+    },
+    {
+      "id": "amg2r",
+      "label": "Алюминий АМг2 рифлёный (квинтет)",
+      "short": "АМг2 рифл.",
+      "density": 2680,
+      "policy": "whole",
+      "thicknesses": [
+        1.5,
+        2,
+        3,
+        4,
+        5
+      ]
+    },
+    {
+      "id": "amg5",
+      "label": "Алюминий АМг5",
+      "short": "АМг5",
+      "density": 2650,
+      "policy": "whole",
+      "thicknesses": [
+        1,
+        1.5,
+        2,
+        3,
+        4,
+        5,
+        6,
+        8,
+        10
+      ]
+    }
+  ],
+  "rates": {
+    "cutting": [
+      {
+        "t": 0.5,
+        "perM": 35,
+        "pierce": 6
+      },
+      {
+        "t": 1,
+        "perM": 40,
+        "pierce": 8
+      },
+      {
+        "t": 1.5,
+        "perM": 45,
+        "pierce": 9
+      },
+      {
+        "t": 2,
+        "perM": 50,
+        "pierce": 10
+      },
+      {
+        "t": 2.5,
+        "perM": 55,
+        "pierce": 11
+      },
+      {
+        "t": 3,
+        "perM": 60,
+        "pierce": 12
+      },
+      {
+        "t": 4,
+        "perM": 70,
+        "pierce": 13
+      },
+      {
+        "t": 5,
+        "perM": 80,
+        "pierce": 14
+      },
+      {
+        "t": 6,
+        "perM": 90,
+        "pierce": 15
+      },
+      {
+        "t": 8,
+        "perM": 130,
+        "pierce": 20
+      },
+      {
+        "t": 10,
+        "perM": 190,
+        "pierce": 26
+      },
+      {
+        "t": 12,
+        "perM": 250,
+        "pierce": 32
+      },
+      {
+        "t": 14,
+        "perM": 320,
+        "pierce": 40
+      },
+      {
+        "t": 16,
+        "perM": 420,
+        "pierce": 48
+      },
+      {
+        "t": 20,
+        "perM": 950,
+        "pierce": 80
+      },
+      {
+        "t": 25,
+        "perM": 1300,
+        "pierce": 100
+      },
+      {
+        "t": 30,
+        "perM": 1700,
+        "pierce": 120
+      }
+    ],
+    "bending": [
+      {
+        "t": 0.5,
+        "perBend": 50
+      },
+      {
+        "t": 1,
+        "perBend": 55
+      },
+      {
+        "t": 1.5,
+        "perBend": 60
+      },
+      {
+        "t": 2,
+        "perBend": 70
+      },
+      {
+        "t": 3,
+        "perBend": 85
+      },
+      {
+        "t": 4,
+        "perBend": 110
+      },
+      {
+        "t": 5,
+        "perBend": 130
+      },
+      {
+        "t": 6,
+        "perBend": 160
+      },
+      {
+        "t": 8,
+        "perBend": 230
+      },
+      {
+        "t": 10,
+        "perBend": 320
+      },
+      {
+        "t": 12,
+        "perBend": 420
+      }
+    ],
+    "bendLenK": [
+      {
+        "upTo": 300,
+        "k": 0.8
+      },
+      {
+        "upTo": 1000,
+        "k": 1
+      },
+      {
+        "upTo": 2000,
+        "k": 1.4
+      },
+      {
+        "upTo": 3000,
+        "k": 1.8
+      },
+      {
+        "upTo": 99999,
+        "k": 2.5
+      }
+    ],
+    "bendSetup": 0,
+    "extraOps": [
+      {
+        "label": "Порошковая покраска",
+        "unit": "м²",
+        "price": 650,
+        "note": "площадь с двух сторон"
+      },
+      {
+        "label": "Грунтовка / покраска эмалью",
+        "unit": "м²",
+        "price": 350,
+        "note": "площадь с двух сторон"
+      },
+      {
+        "label": "Горячее цинкование",
+        "unit": "кг",
+        "price": 75
+      },
+      {
+        "label": "Нарезка резьбы М3–М10",
+        "unit": "отв.",
+        "price": 35
+      },
+      {
+        "label": "Зенковка / фаска отверстия",
+        "unit": "отв.",
+        "price": 20
+      },
+      {
+        "label": "Запрессовка крепежа",
+        "unit": "шт",
+        "price": 30,
+        "note": "без стоимости крепежа"
+      },
+      {
+        "label": "Сварка полуавтоматом",
+        "unit": "м шва",
+        "price": 700
+      },
+      {
+        "label": "Сварка аргоном (нерж., алюминий)",
+        "unit": "м шва",
+        "price": 1500
+      },
+      {
+        "label": "Зачистка кромок",
+        "unit": "м",
+        "price": 40
+      },
+      {
+        "label": "Вальцовка",
+        "unit": "шт",
+        "price": 400,
+        "note": "простая обечайка; крупные — дороже"
+      },
+      {
+        "label": "Галтовка (снятие заусенцев)",
+        "unit": "кг",
+        "price": 60
+      }
+    ]
+  },
+  "groups": [
+    {
+      "key": "08ps|1.5",
+      "materialId": "08ps",
+      "materialLabel": "08пс холоднокатаный",
+      "thickness": 1.5,
+      "policy": "length",
+      "chosenSheet": "1250×2500",
+      "autoChosen": true,
+      "capped": false,
+      "materialCost": 275,
+      "partsKg": 3.51,
+      "bboxKg": 3.95,
+      "offers": [
+        {
+          "sheet": "1250×2500",
+          "pricePerKg": 64.99,
+          "source": "mc",
+          "note": "mc.ru, медиана 3 предложений",
+          "materialCost": 275,
+          "sheets": 0.11,
+          "utilization": 0.933,
+          "splitParts": 0
+        }
+      ],
+      "mcUrl": "https://mc.ru/region/speterburg/metalloprokat/stal_listovaya_h_k_st/r1/1.5",
+      "pricesFetchedAt": null
+    },
+    {
+      "key": "08ps|2",
+      "materialId": "08ps",
+      "materialLabel": "08пс холоднокатаный",
+      "thickness": 2,
+      "policy": "length",
+      "chosenSheet": "1250×2500",
+      "autoChosen": true,
+      "capped": true,
+      "materialCost": 3845,
+      "partsKg": 37.54,
+      "bboxKg": 42.42,
+      "offers": [
+        {
+          "sheet": "1250×2500",
+          "pricePerKg": 64.74,
+          "source": "mc",
+          "note": "mc.ru, медиана 4 предложений",
+          "materialCost": 3845,
+          "sheets": 1.21,
+          "utilization": 0.597,
+          "splitParts": 0
+        }
+      ],
+      "mcUrl": "https://mc.ru/region/speterburg/metalloprokat/stal_listovaya_h_k_st/r1/2",
+      "pricesFetchedAt": null
+    },
+    {
+      "key": "rifl|3",
+      "materialId": "rifl",
+      "materialLabel": "Рифлёный Ст3 (ромб/чечевица)",
+      "thickness": 3,
+      "policy": "length",
+      "chosenSheet": "1500×6000",
+      "autoChosen": true,
+      "capped": true,
+      "materialCost": 102673,
+      "partsKg": 928.85,
+      "bboxKg": 1119.83,
+      "offers": [
+        {
+          "sheet": "1250×2500",
+          "pricePerKg": 64.99,
+          "source": "mc",
+          "note": "mc.ru: Лист рифленый 3х1250х2500 чечев н/обр арт.1191096",
+          "materialCost": 101889,
+          "sheets": 19.79,
+          "utilization": 0.478,
+          "splitParts": 3
+        },
+        {
+          "sheet": "1500×3000",
+          "pricePerKg": 64.99,
+          "source": "mc",
+          "note": "mc.ru, медиана 2 предложений",
+          "materialCost": 101889,
+          "sheets": 13.74,
+          "utilization": 0.334,
+          "splitParts": 3
+        },
+        {
+          "sheet": "1500×6000",
+          "pricePerKg": 65.49,
+          "source": "mc",
+          "note": "mc.ru, медиана 2 предложений",
+          "materialCost": 102673,
+          "sheets": 6.87,
+          "utilization": 0.341,
+          "splitParts": 0
+        }
+      ],
+      "mcUrl": "https://mc.ru/region/speterburg/metalloprokat/list_riflenyj/r1/3",
+      "pricesFetchedAt": null
+    },
+    {
+      "key": "st3|2",
+      "materialId": "st3",
+      "materialLabel": "Ст3 горячекатаный",
+      "thickness": 2,
+      "policy": "length",
+      "chosenSheet": "1000×2000",
+      "autoChosen": true,
+      "capped": true,
+      "materialCost": 6925,
+      "partsKg": 79.16,
+      "bboxKg": 79.16,
+      "offers": [
+        {
+          "sheet": "1000×2000",
+          "pricePerKg": 62.49,
+          "source": "mc",
+          "note": "mc.ru: Лист горячекатаный 2х1000х2000",
+          "materialCost": 6925,
+          "sheets": 3.53,
+          "utilization": 0.556,
+          "splitParts": 1
+        },
+        {
+          "sheet": "1250×2500",
+          "pricePerKg": 63.49,
+          "source": "mc",
+          "note": "mc.ru, медиана 2 предложений",
+          "materialCost": 7036,
+          "sheets": 2.26,
+          "utilization": 0.508,
+          "splitParts": 1
+        }
+      ],
+      "mcUrl": "https://mc.ru/region/speterburg/metalloprokat/stal_listovaya_g_k_st3/r1/2",
+      "pricesFetchedAt": null
+    }
+  ],
+  "positions": [
+    {
+      "id": "p4-1",
+      "name": "НГЭН.745421.0001",
+      "fileName": "НГЭН.745421.0001 st3 s2mm 5sht.dxf",
+      "source": "dxf",
+      "disabled": false,
+      "materialId": "st3",
+      "thickness": 2,
+      "qty": 5,
+      "guessed": {
+        "material": false,
+        "thickness": false,
+        "qty": false
+      },
+      "geometry": {
+        "widthMm": 2896,
+        "heightMm": 348.2,
+        "areaM2": 1.0084,
+        "bboxAreaM2": 1.0084,
+        "cutM": 6.488,
+        "pierces": 1,
+        "contours": 1
+      },
+      "bends": 7,
+      "detectedBends": 7,
+      "bendLengthMm": 2896,
+      "extras": [],
+      "massKg": 15.831,
+      "warnings": [
+        "Не помещается на лист 1000×2000 — считаем из 2 частей (+696 мм реза)"
+      ],
+      "massCheck": {
+        "drawingKg": 15.8,
+        "status": "ok"
+      },
+      "titleBlock": {
+        "designation": "НГЭН.745421.0001",
+        "materialText": "Ст3, лист х/к (ГОСТ 19904) → 08пс х/к",
+        "thickness": 2,
+        "massKg": 15.8,
+        "scale": "1:2"
+      },
+      "drawingText": "Технические требования:\n1 *Размер для справок.\n2 ** Деталь допускается изготовить составной, но не более, чем их 3-х частей. Детали соединить при помощи сварки, шов С2.\n3 Общие допуски по ГОСТ 30893.1-2002: H14, h14, IT14/2.\n4 Сварные швы по ГОСТ 14771-76. Наружные сварные швы зачистить от брызг и неровностей. Одинаковые и подобные детали приваривать аналогично указанным на чертеже. Все сварные швы подвергнуть визуально-измерительному контролю в объеме 100 %.\n5 Неуказанные радиусы гибов R = 2 мм.\nШтамп: НГЭН.745421.0001 «Канал сливной»; материал: Лист 2 ГОСТ 19904-90 / Ст3 ГОСТ 16523-97; масса: см. таблицу; масштаб 1:2; ООО \"НГ-Энерго\"\nТаблица: Обозначение | L, мм | Масса, кг\nНГЭН.745421.0001 | 2896 | 15,8\n-01 | 2196 | 12,0\n-02 | 2696 | 14,7\n-03 | 1890 | 10,3\n-04 | 2292 | 12,5\n-05 | 2172 | 11,9\n-06 | 474 | 2,6\n-07 | 2792 | 15,3\n-08 | 2892 | 15,8\n-09 | 11348 | 62,0\n-10 | 520 | 2,8\n-11 | 2296 | 12,6\n-12 | 3040 | 16,6\n-13 | 1240 | 6,8\n-14 | 2248 | 12,3\n-15 | 1000 | 5,5\n-16 | 2880 | 15,7\n-17 | 1560 | 8,5\n-18 | 2496 | 13,6",
+      "splitParts": 2,
+      "cost": {
+        "material": 1385.02,
+        "cut": 379.24,
+        "bend": 882,
+        "extras": 0,
+        "total": 2646.26,
+        "sum": 13231.28,
+        "priceWithMarkup": 3969.38,
+        "sumWithMarkup": 19846.92
+      }
+    },
+    {
+      "id": "p4-2",
+      "name": "НГЭН.745535.0021-01",
+      "fileName": "НГЭН.745535.0021-01.dxf",
+      "source": "dxf",
+      "disabled": false,
+      "materialId": "08ps",
+      "thickness": 1.5,
+      "qty": 1,
+      "guessed": {
+        "material": false,
+        "thickness": false,
+        "qty": true
+      },
+      "geometry": {
+        "widthMm": 703,
+        "heightMm": 477,
+        "areaM2": 0.2977,
+        "bboxAreaM2": 0.3353,
+        "cutM": 2.36,
+        "pierces": 1,
+        "contours": 1
+      },
+      "bends": 7,
+      "detectedBends": 7,
+      "bendLengthMm": 467,
+      "extras": [],
+      "massKg": 3.505,
+      "warnings": [],
+      "massCheck": {
+        "drawingKg": 3.5,
+        "status": "ok"
+      },
+      "titleBlock": {
+        "designation": "НГЭН.745535.0021",
+        "materialText": "Ст3, лист х/к (ГОСТ 19904) → 08пс х/к",
+        "thickness": 1.5,
+        "massKg": 3.5,
+        "scale": "1:4"
+      },
+      "drawingText": "Технические требования:\n1 Размеры для справок.\n2 Общие допуски по ГОСТ 30893.1-2002: H14, h14; IT14/2.\n3 Сварные швы по ГОСТ 14771-76. Наружные сварные швы зачистить от наплывов, брызг и неровностей. Одинаковые и подобные детали приварить аналогично указанным на чертеже. Все сварные швы подвергнуть визуально-измерительному контролю в объеме 100 %.\n4 Острые кромки притупить.\nШтамп: НГЭН.745535.0021 «Корпус»; материал: Лист 1,5 ГОСТ 19904-90 / Ст3 ГОСТ 16523-97; масса: см. таблицу; масштаб 1:4; ООО \"НГ-Энерго\"\nТаблица: Обозначение | A, мм | B, мм | C, мм | D, мм | Масса, кг\nНГЭН.745535.0021 | 404 | 300 | 603 | 477 | 2,9\n-01 | 504 | 300 | 703 | 477 | 3,5\n-02 | 404 | 200 | 603 | 377 | 2,2\n-03 | 333 | 300 | 532 | 477 | 2,5\n-04 | 504 | 400 | 703 | 577 | 4,3\n-05 | 330 | 500 | 529 | 677 | 3,8\n-06 | 304 | 400 | 503 | 577 | 3,0\n-07 | 388 | 300 | 587 | 477 | 2,9\n-08 | 300 | 500 | 499 | 677 | 3,5\n-09 | 250 | 300 | 449 | 477 | 2,1",
+      "cost": {
+        "material": 274.98,
+        "cut": 115.2,
+        "bend": 420,
+        "extras": 0,
+        "total": 810.18,
+        "sum": 810.18,
+        "priceWithMarkup": 1215.27,
+        "sumWithMarkup": 1215.27
+      }
+    },
+    {
+      "id": "p4-3",
+      "name": "НГЭН.А86.11.11.1201",
+      "fileName": "НГЭН.А86.11.11.1201.dxf",
+      "source": "dxf",
+      "disabled": false,
+      "materialId": "08ps",
+      "thickness": 2,
+      "qty": 1,
+      "guessed": {
+        "material": false,
+        "thickness": false,
+        "qty": true
+      },
+      "geometry": {
+        "widthMm": 855,
+        "heightMm": 1580,
+        "areaM2": 1.1956,
+        "bboxAreaM2": 1.3509,
+        "cutM": 4.545,
+        "pierces": 1,
+        "contours": 1
+      },
+      "bends": 0,
+      "detectedBends": 0,
+      "bendLengthMm": 1580,
+      "extras": [],
+      "massKg": 18.771,
+      "warnings": [],
+      "massCheck": {
+        "drawingKg": 18.8,
+        "status": "ok"
+      },
+      "titleBlock": {
+        "designation": "НГЭН.А86.11.11.1201",
+        "materialText": "Ст3, лист х/к (ГОСТ 19904) → 08пс х/к",
+        "thickness": 2,
+        "massKg": 18.8,
+        "scale": "1:10"
+      },
+      "drawingText": "Технические требования:\n1 Размеры для справок.\n2 Общие допуски по ГОСТ 30893.1-2002: H14, h14; IT14/2.\n3 Неуказанные радиусы гибов R=2 мм.\nШтамп: НГЭН.А86.11.11.1201 «Лист опоры»; материал: Лист 2 ГОСТ 19904-90 / Ст3 ГОСТ 16523-97; масса 18,8 кг; масштаб 1:10; ООО \"НГ-Энерго\"\nНадписи: НГЭН.А86.11.11.1201-01 - зеркальное отражение",
+      "cost": {
+        "material": 1922.31,
+        "cut": 237.27,
+        "bend": 0,
+        "extras": 0,
+        "total": 2159.58,
+        "sum": 2159.58,
+        "priceWithMarkup": 3239.37,
+        "sumWithMarkup": 3239.37
+      }
+    },
+    {
+      "id": "p4-4",
+      "name": "НГЭН.А86.11.13.0002 st3",
+      "fileName": "НГЭН.А86.11.13.0002 st3 s3mm rifleniy 5sht.dxf",
+      "source": "dxf",
+      "disabled": false,
+      "materialId": "rifl",
+      "thickness": 3,
+      "qty": 5,
+      "guessed": {
+        "material": false,
+        "thickness": false,
+        "qty": false
+      },
+      "geometry": {
+        "widthMm": 3182.6,
+        "heightMm": 773,
+        "areaM2": 1.541,
+        "bboxAreaM2": 2.4602,
+        "cutM": 9.125,
+        "pierces": 1,
+        "contours": 1
+      },
+      "bends": 0,
+      "detectedBends": 0,
+      "bendLengthMm": 3183,
+      "extras": [],
+      "massKg": 39.063,
+      "warnings": [],
+      "massCheck": {
+        "drawingKg": 36.3,
+        "status": "ok"
+      },
+      "titleBlock": {
+        "designation": "НГЭН.А86.11.13.0002",
+        "materialText": "рифлёный лист",
+        "thickness": 3,
+        "massKg": 36.3,
+        "scale": "1:15"
+      },
+      "drawingText": "Технические требования:\n1 Размеры для справок.\n2 Общие допуски по ГОСТ 30893.1-2002: H14, h14; IT14/2.\n3 Длина развернутой части l=3183* мм.\n4 Допускается применение прямого листа с последующим притягиванием к силовому каркасу при сварочных работах.\n5 Допускается изготовление из 4-х частей со сваркой стыков швом С5 по ГОСТ 14771-76 с использованием технологических подкладок.\nШтамп: НГЭН.А86.11.13.0002 «Лист зашивочный»; материал: Лист ромб К-ПУ-3 ГОСТ 8568-77 / Ст3 ГОСТ 16523-97; масса: см. таблицу; масштаб 1:15; ООО \"НГ-Энерго\"\nТаблица: Обозначение | A, мм | B, мм | Масса, кг\nНГЭН.А86.11.13.0002 | 773 | 166 | 36,3\n-01 | 1040 | 652 | 64,1",
+      "cost": {
+        "material": 5718.02,
+        "cut": 587.49,
+        "bend": 0,
+        "extras": 0,
+        "total": 6305.51,
+        "sum": 31527.56,
+        "priceWithMarkup": 9458.27,
+        "sumWithMarkup": 47291.34
+      }
+    },
+    {
+      "id": "p4-5",
+      "name": "НГЭН.А86.11.13.0002-01 st3",
+      "fileName": "НГЭН.А86.11.13.0002-01 st3 s3mm rifleniy 5sht.dxf",
+      "source": "dxf",
+      "disabled": false,
+      "materialId": "rifl",
+      "thickness": 3,
+      "qty": 5,
+      "guessed": {
+        "material": false,
+        "thickness": false,
+        "qty": false
+      },
+      "geometry": {
+        "widthMm": 3182.6,
+        "heightMm": 1040,
+        "areaM2": 2.7224,
+        "bboxAreaM2": 3.3099,
+        "cutM": 9.221,
+        "pierces": 1,
+        "contours": 1
+      },
+      "bends": 0,
+      "detectedBends": 0,
+      "bendLengthMm": 3183,
+      "extras": [],
+      "massKg": 69.012,
+      "warnings": [],
+      "cost": {
+        "material": 7693.06,
+        "cut": 593.54,
+        "bend": 0,
+        "extras": 0,
+        "total": 8286.6,
+        "sum": 41432.99,
+        "priceWithMarkup": 12429.9,
+        "sumWithMarkup": 62149.48
+      }
+    },
+    {
+      "id": "p4-6",
+      "name": "НГЭН.А86.11.13.0004 st3",
+      "fileName": "НГЭН.А86.11.13.0004 st3 s3mm rifleniy 5sht.dxf",
+      "source": "dxf",
+      "disabled": false,
+      "materialId": "rifl",
+      "thickness": 3,
+      "qty": 5,
+      "guessed": {
+        "material": false,
+        "thickness": false,
+        "qty": false
+      },
+      "geometry": {
+        "widthMm": 3182.6,
+        "heightMm": 963,
+        "areaM2": 3.0649,
+        "bboxAreaM2": 3.0649,
+        "cutM": 8.291,
+        "pierces": 1,
+        "contours": 1
+      },
+      "bends": 0,
+      "detectedBends": 0,
+      "bendLengthMm": 3183,
+      "extras": [],
+      "massKg": 77.694,
+      "warnings": [],
+      "massCheck": {
+        "drawingKg": 72.2,
+        "status": "ok"
+      },
+      "titleBlock": {
+        "designation": "НГЭН.А86.11.13.0004",
+        "materialText": "рифлёный лист",
+        "thickness": 3,
+        "massKg": 72.2,
+        "scale": "1:25"
+      },
+      "drawingText": "Технические требования:\n1 Размеры для справок.\n2 Общие допуски по ГОСТ 30893.1-2002: H14, h14; IT14/2.\n3 Длина развернутой части l=3183* мм.\n4 Допускается применение прямого листа с последующим притягиванием к силовому каркасу при сварочных работах.\n5 Допускается изготовление из двух частей со сваркой стыка швом С5 по ГОСТ 14771-76 с использованием технологической подкладки.\nШтамп: НГЭН.А86.11.13.0004 «Лист зашивочный»; материал: Лист ромб К-ПУ-3 ГОСТ 8568-77 / Ст3 ГОСТ 16523-97; масса 72,2 кг; масштаб 1:25; ООО \"НГ-Энерго\"",
+      "cost": {
+        "material": 7123.49,
+        "cut": 534.95,
+        "bend": 0,
+        "extras": 0,
+        "total": 7658.43,
+        "sum": 38292.17,
+        "priceWithMarkup": 11487.65,
+        "sumWithMarkup": 57438.26
+      }
+    },
+    {
+      "id": "p4-7",
+      "name": "НГЭН.А86.11.11.1201-01",
+      "fileName": "НГЭН.А86.11.11.1201.pdf",
+      "source": "pdf",
+      "disabled": false,
+      "materialId": "08ps",
+      "thickness": 2,
+      "qty": 1,
+      "guessed": {
+        "material": false,
+        "thickness": false,
+        "qty": true
+      },
+      "geometry": {
+        "widthMm": 855,
+        "heightMm": 1580,
+        "areaM2": 1.1955,
+        "bboxAreaM2": 1.3509,
+        "cutM": 4.545,
+        "pierces": 1,
+        "contours": 1
+      },
+      "bends": 3,
+      "detectedBends": 3,
+      "bendLengthMm": 1580,
+      "extras": [],
+      "massKg": 18.769,
+      "warnings": [],
+      "massCheck": {
+        "drawingKg": null,
+        "status": "unknown"
+      },
+      "titleBlock": {
+        "designation": "НГЭН.А86.11.11.1201-01",
+        "materialText": "Ст3, лист х/к (ГОСТ 19904) → 08пс х/к",
+        "thickness": 2
+      },
+      "drawingText": "Штамп: НГЭН.А86.11.11.1201-01\nНадписи: Линия сгиба",
+      "cost": {
+        "material": 1922.31,
+        "cut": 237.26,
+        "bend": 294,
+        "extras": 0,
+        "total": 2453.57,
+        "sum": 2453.57,
+        "priceWithMarkup": 3680.35,
+        "sumWithMarkup": 3680.35
+      }
+    }
+  ],
+  "documents": [],
+  "images": [],
+  "unmatchedRequestLines": [],
+  "totals": {
+    "material": 113718,
+    "cutting": 11066,
+    "bending": 5124,
+    "extras": 0,
+    "delivery": 0,
+    "cost": 129907,
+    "markup": 64954,
+    "total": 194861,
+    "vat": 35139,
+    "kg": 1049.05,
+    "cutM": 180.56,
+    "bends": 45,
+    "pieces": 23
+  }
+}

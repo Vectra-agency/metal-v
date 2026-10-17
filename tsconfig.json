@@ -12,7 +12,8 @@
     "erasableSyntaxOnly": true,
     "skipLibCheck": true,
     "types": ["node"],
-    "noUnusedLocals": true
+    "noUnusedLocals": true,
+    "paths": { "@/*": ["./src/*"] }
   },
   "include": ["src", "server", "scripts", "vite.config.ts"]
 }

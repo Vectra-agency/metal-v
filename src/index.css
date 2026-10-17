@@ -1,0 +1,264 @@
+/* Tailwind CSS v4 + shadcn/ui (стиль radix-nova, компоненты — src/components/ui, `npx shadcn@latest add …`).
+   Тёмная тема — класс .dark на <html> (src/components/ui/theme.ts + inline-скрипт в index.html).
+   Свои токены: категории стоимости (metal, cut, bend, extra, delivery), статусы (ok, warn, danger),
+   guessed — значение не найдено в файлах, ai — изменено/предложено ИИ.
+   У статусов: X — «чернила» (текст, иконка, рамка; AA на фоне), X-foreground — текст на заливке bg-X,
+   X-soft — мягкий фон плашки/поля: bg-warn-soft text-warn border-warn/40, bg-guessed-soft border-guessed. */
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "@fontsource-variable/inter";
+
+/* свои цвета всегда в сборке — и для классов, собранных в коде (`bg-${category}`), которых Tailwind не видит */
+@source inline("{bg,text,border,fill,stroke}-{metal,cut,bend,extra,delivery}");
+@source inline("{bg,text,border}-{ok,warn,danger,guessed,ai}");
+@source inline("bg-{ok,warn,danger,guessed,ai}-soft");
+@source inline("text-{ok,warn,danger,guessed,ai}-foreground");
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --font-heading: var(--font-sans);
+  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+
+  /* категории стоимости: bg-metal, text-cut, fill-bend, stroke-extra, border-delivery… */
+  --color-metal: var(--metal);
+  --color-cut: var(--cut);
+  --color-bend: var(--bend);
+  --color-extra: var(--extra);
+  --color-delivery: var(--delivery);
+  /* статусы */
+  --color-ok: var(--ok);
+  --color-ok-foreground: var(--ok-foreground);
+  --color-ok-soft: var(--ok-soft);
+  --color-warn: var(--warn);
+  --color-warn-foreground: var(--warn-foreground);
+  --color-warn-soft: var(--warn-soft);
+  --color-danger: var(--danger);
+  --color-danger-foreground: var(--danger-foreground);
+  --color-danger-soft: var(--danger-soft);
+  --color-guessed: var(--guessed);
+  --color-guessed-foreground: var(--guessed-foreground);
+  --color-guessed-soft: var(--guessed-soft);
+  --color-ai: var(--ai);
+  --color-ai-foreground: var(--ai-foreground);
+  --color-ai-soft: var(--ai-soft);
+}
+
+/* светлая тема; в комментариях — исходные цвета прежнего интерфейса */
+:root {
+  color-scheme: light;
+  --radius: 0.625rem;
+  /* липкие слои: шапка и полоса итогов (ui-spec §2.1) */
+  --header-h: 3.5rem;
+  --strip-h: 2.75rem;
+  --background: oklch(0.991 0.001 106.4); /* #fcfcfb */
+  --foreground: oklch(0.182 0.002 106.6); /* #121211 */
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.182 0.002 106.6);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.182 0.002 106.6);
+  --primary: oklch(0.226 0.004 106.7); /* #1c1c1a — графит: цвет несёт смысл (синий — только фокус и металл) */
+  --primary-foreground: oklch(0.991 0.001 106.4);
+  --secondary: oklch(0.952 0.004 91.4); /* #f0efec */
+  --secondary-foreground: oklch(0.226 0.004 106.7); /* #1c1c1a */
+  --muted: oklch(0.964 0.003 106.4); /* #f3f3f1 */
+  --muted-foreground: oklch(0.495 0.008 97.5); /* #63625d */
+  --accent: oklch(0.952 0.004 91.4); /* #f0efec */
+  --accent-foreground: oklch(0.226 0.004 106.7);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.912 0.007 97.4); /* #e3e2dd */
+  --input: oklch(0.861 0.008 91.5); /* #d3d1cb */
+  --ring: oklch(0.56 0.163 255.5);
+  --chart-1: var(--metal);
+  --chart-2: var(--cut);
+  --chart-3: var(--bend);
+  --chart-4: var(--extra);
+  --chart-5: var(--delivery);
+  --sidebar: oklch(0.976 0.003 106.4); /* #f7f7f5 */
+  --sidebar-foreground: oklch(0.182 0.002 106.6);
+  --sidebar-primary: oklch(0.226 0.004 106.7);
+  --sidebar-primary-foreground: oklch(0.991 0.001 106.4);
+  --sidebar-accent: oklch(0.937 0.005 95.1); /* #ebeae6 */
+  --sidebar-accent-foreground: oklch(0.226 0.004 106.7);
+  --sidebar-border: oklch(0.912 0.007 97.4);
+  --sidebar-ring: oklch(0.56 0.163 255.5);
+
+  --metal: oklch(0.575 0.163 255.5); /* #2a78d6 */
+  --cut: oklch(0.671 0.175 40.6); /* #eb6834 */
+  --bend: oklch(0.669 0.141 162.1); /* #1baf7a */
+  --extra: oklch(0.764 0.161 75.1); /* #eda100 */
+  --delivery: oklch(0.716 0.141 357.4); /* #e87ba4 */
+
+  --ok: oklch(0.493 0.103 162); /* #11734f */
+  --ok-foreground: oklch(1 0 0);
+  --ok-soft: oklch(0.95 0.02 164.6); /* #e3f3eb */
+  --warn: oklch(0.506 0.126 54.6); /* #9a4d00 */
+  --warn-foreground: oklch(1 0 0);
+  --warn-soft: oklch(0.958 0.029 67.5); /* #ffeedd */
+  --danger: oklch(0.473 0.161 24.4); /* #a3262a */
+  --danger-foreground: oklch(1 0 0);
+  --danger-soft: oklch(0.948 0.023 20.9); /* #fde8e7 */
+  --guessed: oklch(0.505 0.103 92); /* #7a6200 */
+  --guessed-foreground: oklch(1 0 0);
+  --guessed-soft: oklch(0.964 0.063 96.6); /* #fff4c4 — «подсвечено жёлтым» */
+  --ai: oklch(0.506 0.211 290.7); /* #6b3fd1 */
+  --ai-foreground: oklch(1 0 0);
+  --ai-soft: oklch(0.95 0.025 301.1); /* #f1ebfd */
+}
+
+/* тёмная тема */
+.dark {
+  color-scheme: dark;
+  --background: oklch(0.182 0.002 106.6); /* #121211 */
+  --foreground: oklch(0.952 0.004 91.4); /* #f0efec */
+  --card: oklch(0.217 0.002 106.6); /* #1a1a19 */
+  --card-foreground: oklch(0.952 0.004 91.4);
+  --popover: oklch(0.251 0.004 106.7); /* #222220 */
+  --popover-foreground: oklch(0.952 0.004 91.4);
+  --primary: oklch(0.952 0.004 91.4); /* #f0efec — светлый графит, текст на нём тёмный */
+  --primary-foreground: oklch(0.226 0.004 106.7);
+  --secondary: oklch(0.292 0.004 106.6); /* #2c2c2a */
+  --secondary-foreground: oklch(0.952 0.004 91.4);
+  --muted: oklch(0.26 0.004 106.7); /* #242422 */
+  --muted-foreground: oklch(0.711 0.011 100.9); /* #a3a29a */
+  --accent: oklch(0.292 0.004 106.6); /* #2c2c2a */
+  --accent-foreground: oklch(0.952 0.004 91.4);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.68 0.14 255);
+  --sidebar: oklch(0.2 0.002 106.6); /* #161615 */
+  --sidebar-foreground: oklch(0.952 0.004 91.4);
+  --sidebar-primary: oklch(0.952 0.004 91.4);
+  --sidebar-primary-foreground: oklch(0.226 0.004 106.7);
+  --sidebar-accent: oklch(0.292 0.004 106.6);
+  --sidebar-accent-foreground: oklch(0.952 0.004 91.4);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.68 0.14 255);
+
+  --metal: oklch(0.622 0.161 255.1); /* #3987e5 */
+  --cut: oklch(0.622 0.173 40.1); /* #d95926 */
+  --bend: oklch(0.621 0.128 163.1); /* #199e70 */
+  --extra: oklch(0.67 0.143 73.2); /* #c98500 */
+  --delivery: oklch(0.622 0.171 0.8); /* #d55181 */
+
+  --ok: oklch(0.787 0.126 164.1); /* #5fd3a4 */
+  --ok-foreground: oklch(0.275 0.056 161.8); /* #05301f */
+  --ok-soft: oklch(0.262 0.035 164); /* #132a20 */
+  --warn: oklch(0.802 0.128 66); /* #f6ad5f */
+  --warn-foreground: oklch(0.252 0.048 79.9); /* #2e1f03 */
+  --warn-soft: oklch(0.289 0.05 69.1); /* #3b260c */
+  --danger: oklch(0.774 0.105 19.7); /* #f19a9a */
+  --danger-foreground: oklch(0.25 0.071 23.8); /* #3d1010 */
+  --danger-soft: oklch(0.263 0.06 22.1); /* #3d1717 */
+  --guessed: oklch(0.87 0.129 99.4); /* #e9d66b */
+  --guessed-foreground: oklch(0.258 0.053 96.3); /* #2b2300 */
+  --guessed-soft: oklch(0.306 0.047 101.8); /* #343012 */
+  --ai: oklch(0.77 0.117 294.7); /* #b9a5f7 */
+  --ai-foreground: oklch(0.234 0.085 290); /* #1f1342 */
+  --ai-soft: oklch(0.281 0.06 291.9); /* #2a2344 */
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-sm text-foreground antialiased;
+  }
+  button:not(:disabled),
+  [role='button']:not(:disabled) {
+    cursor: pointer;
+  }
+  html {
+    @apply font-sans;
+  }
+}
+
+/* Видимый фокус для своих фокусируемых элементов (строки, чипы, части на листах, плашки этапов) */
+@utility focus-ring {
+  &:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+}
+
+/* Вспышка строки таблицы при переходе к позиции */
+@keyframes row-flash {
+  from {
+    background-color: color-mix(in oklch, var(--ring) 22%, transparent);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+@utility animate-row-flash {
+  animation: row-flash 1.2s ease-out;
+}
+
+/* Меньше движения: без вспышек и выездов (индикатор загрузки остаётся) */
+@media (prefers-reduced-motion: reduce) {
+  *:not(.animate-spin),
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Печать (Ctrl+P): тема на время печати светлая (theme.ts), белый фон; правила КП — в src/print.css;
+   всё служебное — с классом .no-print (или утилитой print:hidden) */
+@media print {
+  html,
+  body {
+    background: #fff !important;
+  }
+  body {
+    color: #000;
+  }
+  .no-print,
+  [data-sonner-toaster] {
+    display: none !important;
+  }
+}
