@@ -5,6 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table.tsx';
 import { NumInput } from '@/components/common/NumInput.tsx';
 import { MATERIALS, type Material, type SheetPolicy } from '@/core/materials.ts';
+import { CUT_GROUPS } from '@/core/pricing.ts';
 import { n0 } from '@/format.ts';
 import { useMediaQuery } from '@/hooks/useMediaQuery.ts';
 import { patchSettings, setPolicy } from '@/store/actions.ts';
@@ -39,7 +40,7 @@ export function MaterialsTab(): ReactElement {
   const policy = useStore((s) => s.settings.policy);
   // узкий экран: списание — под названием материала, чтобы таблица не уезжала вбок
   const wide = useMediaQuery('(min-width: 640px)');
-  const setK = (id: string, patch: { cutK?: number; bendK?: number }) => patchSettings({ matK: { ...matK, [id]: { ...matK[id], ...patch } } });
+  const setK = (id: string, patch: { bendK?: number }) => patchSettings({ matK: { ...matK, [id]: { ...matK[id], ...patch } } });
 
   return (
     <div className="flex flex-col gap-4">
@@ -48,8 +49,8 @@ export function MaterialsTab(): ReactElement {
           <TableHeader>
             <TableRow className="hover:bg-transparent">
               <TableHead className={TH}>Материал</TableHead>
-              <TableHead className={`${TH} text-right`} title="Множитель к расценке резки">
-                k резки
+              <TableHead className={TH} title="Колонка прайса на резку (вкладка «Резка»)">
+                Резка по прайсу
               </TableHead>
               <TableHead className={`${TH} text-right`} title="Множитель к цене гиба">
                 k гибки
@@ -65,17 +66,7 @@ export function MaterialsTab(): ReactElement {
                   <div className="text-xs text-muted-foreground tabular-nums">{n0(mt.density)} кг/м³</div>
                   {!wide && <PolicySelect mt={mt} value={policy[mt.id] ?? mt.policy} className="mt-1.5 w-full" />}
                 </TableCell>
-                <TableCell className={TDN}>
-                  <NumInput
-                    size="sm"
-                    value={matK[mt.id]?.cutK ?? mt.cutK}
-                    onChange={(cutK) => setK(mt.id, { cutK })}
-                    aria-label={`k резки (множитель к расценке резки): ${mt.label}`}
-                    navCol="set-mat-cutK"
-                    navRow={i}
-                    className="w-16"
-                  />
-                </TableCell>
+                <TableCell className={`${TD} text-muted-foreground`}>{CUT_GROUPS.find((g) => g.key === mt.cutGroup)?.label.toLowerCase()}</TableCell>
                 <TableCell className={TDN}>
                   <NumInput
                     size="sm"

@@ -214,7 +214,7 @@ export function PositionsTable(): ReactElement {
             {columns.breakdown && (
               <>
                 <MoneyHead cat="material" label="Металл" title="Металл на 1 шт" />
-                <MoneyHead cat="cut" label="Резка" title="Резка на 1 шт (метры + врезки)" />
+                <MoneyHead cat="cut" label="Резка" title="Резка на 1 шт: метры реза × ₽/м по прайсу" />
                 <MoneyHead cat="bend" label="Гибка" title="Гибка на 1 шт" />
                 <MoneyHead cat="extras" label="Доп." title="Доп. работы на 1 шт" />
               </>

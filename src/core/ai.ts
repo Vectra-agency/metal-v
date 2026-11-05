@@ -31,6 +31,7 @@ export interface AiMaterialRef {
   density: number; // кг/м³
   policy: SheetPolicy; // как цех списывает лист
   thicknesses: number[];
+  cutGroup?: string; // колонка прайса резки: steel | stainless | aluminum | copper
 }
 
 /** Справочная ставка доп. операции (Расценки → «Доп. операции»); ИИ считает по ней ₽/шт */
@@ -73,7 +74,7 @@ export interface AiGroup {
 /** Детерминированный расчёт позиции (до предложений ИИ), ₽ с НДС */
 export interface AiPositionCost {
   material: number; // на 1 шт
-  cut: number; // резка + врезки на 1 шт
+  cut: number; // резка на 1 шт (метры × ₽/м по прайсу)
   bend: number;
   extras: number;
   total: number; // себестоимость 1 шт
@@ -159,7 +160,8 @@ export interface AiContext {
   };
   materials: AiMaterialRef[];
   rates: {
-    cutting: { t: number; perM: number; pierce: number }[]; // Ст3; для других материалов × cutK
+    /** прайс резки, ₽ за погонный метр реза; строка t действует для толщин до t включительно; null — нет в прайсе */
+    cutting: { t: number; steel: number | null; stainless: number | null; aluminum: number | null; copper: number | null }[];
     bending: { t: number; perBend: number }[]; // гиб до 1 м
     bendLenK: { upTo: number; k: number }[];
     bendSetup: number;

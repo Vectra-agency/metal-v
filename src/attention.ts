@@ -7,7 +7,7 @@ import { cyrb53 } from './ai/context.ts';
 import type { AiContext, AiPositionReview, AiSuggestion } from './core/ai.ts';
 import { stripConfirmations } from './core/aiSanitize.ts';
 import { MATERIAL_BY_ID } from './core/materials.ts';
-import { fmtSheet, type GroupResult, type OrderResult, type PriceBook, type Settings } from './core/pricing.ts';
+import { CUT_GROUPS, fmtSheet, type GroupResult, type OrderResult, type PriceBook, type Settings } from './core/pricing.ts';
 import { evidenceSources, findEvidence, type EvidenceSources } from './evidence.ts';
 import { dateDay, kg, m as meters, n0, n1, NBSP, plural, rub } from './format.ts';
 import type { Order, OrderPosition } from './order.ts';
@@ -45,6 +45,7 @@ export type AttentionKind =
   | 'priceFailed'
   | 'priceStale'
   | 'split'
+  | 'cutPrice'
   | 'requestLine'
   | 'qtyUnverified'
   | 'aiUnchecked'
@@ -650,6 +651,23 @@ export function buildAttention(i: AttentionInput): Attention {
           ? [{ kind: 'group', groupKey: r.groupKey, label: 'Другой лист…' }]
           : [{ kind: 'group', groupKey: r.groupKey, label: 'Другой лист…' }, ACK],
         ack: !quiet,
+      });
+    }
+
+    // резка: такой толщины/материала нет в прайсе — резка не посчитана
+    if (r && r.rate.perM == null && r.cutM > 0) {
+      const col = CUT_GROUPS.find((g) => g.key === r.rate.group)?.label.toLowerCase() ?? '';
+      add({
+        id: `cutprice:${base.id}:${r.rate.group}:${p.thickness}`,
+        severity: 'problem',
+        section: 'errors',
+        kind: 'cutPrice',
+        positionId: base.id,
+        order: index,
+        title: `${name} — нет цены резки в прайсе: ${col} ${n1(p.thickness)} мм`,
+        text: 'Резка этой позиции не посчитана. Добавьте строку в «Расценки» → «Резка» или смените материал/толщину.',
+        actions: [{ kind: 'open', positionId: base.id }],
+        ack: false,
       });
     }
 

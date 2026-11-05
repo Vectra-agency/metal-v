@@ -28,7 +28,7 @@ import { Money } from '@/components/common/Money.tsx';
 import { NumInput } from '@/components/common/NumInput.tsx';
 import { PartPreview } from '@/components/common/PartPreview.tsx';
 import { ThicknessPicker } from '@/components/common/ThicknessPicker.tsx';
-import { kg, m as meters, n0, n1, NBSP, pct1, rub } from '@/format.ts';
+import { kg, m as meters, n0, n1, n2, NBSP, pct1, rub } from '@/format.ts';
 import { cn } from '@/lib/utils.ts';
 import type { OrderPosition } from '@/order.ts';
 import { duplicatePosition, editPosition, flashRow, openPosition, removePositions, setHighlight, toggleSelected } from '@/store/actions.ts';
@@ -356,7 +356,7 @@ function PieceMoney({ v, zeroDash }: { v: number | null; zeroDash?: boolean }): 
 function CostBreakdown({ r }: { r: PosResult }): ReactElement {
   const rows: { cat: 'material' | 'cut' | 'bend' | 'extras'; label: string; v: number; sub?: string }[] = [
     { cat: 'material', label: 'Металл', v: r.piece.material },
-    { cat: 'cut', label: 'Резка', v: r.piece.cut + r.piece.pierce, sub: `рез ${rub(r.piece.cut)} + врезки ${rub(r.piece.pierce)}` },
+    { cat: 'cut', label: 'Резка', v: r.piece.cut + r.piece.pierce, sub: r.rate.perM != null ? `${n2(r.cutM)} м × ${n1(r.rate.perM)} ₽/м` : 'нет цены в прайсе резки' },
     { cat: 'bend', label: 'Гибка', v: r.piece.bend },
     { cat: 'extras', label: 'Доп. работы', v: r.piece.extras },
   ];

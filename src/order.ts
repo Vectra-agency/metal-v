@@ -5,6 +5,7 @@ import { dxfText } from './core/drawingText.ts';
 import { parseDxf, type Vec } from './core/dxf.ts';
 import { analyze, metricsOf, type Analysis } from './core/geometry.ts';
 import { parseFileName, MATERIAL_BY_ID } from './core/materials.ts';
+import { normalizeCutRows } from './core/cutPrice.ts';
 import { DEFAULT_SETTINGS, type Position, type PriceBook, type Settings } from './core/pricing.ts';
 import type { PdfMeta, QtyLine } from './core/pdfAnalyze.ts';
 
@@ -369,7 +370,13 @@ export function saveOrder(o: Order): string | null {
 export function loadSettings(): Settings {
   try {
     const raw = localStorage.getItem(K_SETTINGS);
-    if (raw) return { ...structuredClone(DEFAULT_SETTINGS), ...JSON.parse(raw) };
+    if (raw) {
+      const s: Settings = { ...structuredClone(DEFAULT_SETTINGS), ...JSON.parse(raw) };
+      // резка до прайса хранилась как ставка ₽/м + врезка — такие таблицы заменяются прайсом
+      s.cutting = normalizeCutRows(s.cutting) ?? structuredClone(DEFAULT_SETTINGS.cutting);
+      s.matK = Object.fromEntries(Object.entries(s.matK ?? {}).map(([id, k]) => [id, k?.bendK != null ? { bendK: k.bendK } : {}]));
+      return s;
+    }
   } catch {
     /* по умолчанию */
   }

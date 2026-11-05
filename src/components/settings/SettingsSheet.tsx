@@ -9,6 +9,7 @@ import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetT
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs.tsx';
 import { isEditable } from '@/components/common/dom.ts';
 import { MATERIAL_BY_ID, type SheetPolicy } from '@/core/materials.ts';
+import { normalizeCutRows } from '@/core/cutPrice.ts';
 import { DEFAULT_SETTINGS, type ExtraRate, type Settings } from '@/core/pricing.ts';
 import { DEFAULT_QUOTE, type PieceRounding, type QuoteSettings } from '@/quote.ts';
 import { closeSheet, openSheet, resetSettings, setQuoteSettings, setSettings } from '@/store/actions.ts';
@@ -123,7 +124,8 @@ export function parseSettingsFile(text: string): { settings: Settings; quote: Qu
   if (!known.some((k) => k in j) && !('quote' in j)) throw new Error('В файле нет расценок');
 
   const s = structuredClone(DEFAULT_SETTINGS);
-  if ('cutting' in j) s.cutting = numRows(j.cutting, 'cutting', ['t', 'perM', 'pierce']);
+  // старые файлы (ставка ₽/м + врезка) — резка остаётся по прайсу
+  if ('cutting' in j) s.cutting = normalizeCutRows(j.cutting) ?? s.cutting;
   if ('bending' in j) s.bending = numRows(j.bending, 'bending', ['t', 'perBend']);
   if ('bendLenK' in j) s.bendLenK = numRows(j.bendLenK, 'bendLenK', ['upTo', 'k']);
   for (const k of NUM_KEYS) {
@@ -150,9 +152,9 @@ export function parseSettingsFile(text: string): { settings: Settings; quote: Qu
     if (!isObj(j.matK)) bad('matK');
     const m: Settings['matK'] = {};
     for (const [id, v] of Object.entries(j.matK as Obj)) {
-      if (!isObj(v) || (v.cutK !== undefined && !isNum(v.cutK)) || (v.bendK !== undefined && !isNum(v.bendK))) bad('matK');
-      const k = v as { cutK?: number; bendK?: number };
-      m[id] = { ...(k.cutK !== undefined ? { cutK: k.cutK } : {}), ...(k.bendK !== undefined ? { bendK: k.bendK } : {}) };
+      if (!isObj(v) || (v.bendK !== undefined && !isNum(v.bendK))) bad('matK');
+      const k = v as { bendK?: number };
+      m[id] = k.bendK !== undefined ? { bendK: k.bendK } : {};
     }
     s.matK = m;
   }
@@ -295,7 +297,7 @@ export function SettingsSheet(): ReactElement {
             Расценки
           </SheetTitle>
           <SheetDescription className="text-balance">
-            Все цены — с НДС. Значения по умолчанию подобраны по реальным счетам («Лазерная резка СПб», «МИЛП») — правьте под своего подрядчика.
+            Все цены — с НДС. Металл — по ценам mc.ru, резка — по прайсу лазерной резки (₽ за метр реза), гибка — по таблице гибки. Правьте под своего подрядчика.
           </SheetDescription>
         </SheetHeader>
 

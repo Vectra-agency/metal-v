@@ -1,7 +1,10 @@
 // Справочник материалов: плотность, как искать цену на mc.ru,
-// поправки к резке/гибке и правило списания листа.
+// колонка прайса резки, поправка к гибке и правило списания листа.
 
 export type SheetPolicy = 'length' | 'whole' | 'bbox';
+
+/** Колонка прайса на лазерную резку, по которой режется материал */
+export type CutGroup = 'steel' | 'stainless' | 'aluminum' | 'copper';
 
 export interface Material {
   id: string;
@@ -9,7 +12,7 @@ export interface Material {
   short: string; // для таблиц
   density: number; // кг/м³
   extraKgM2: number; // добавка массы (рифление), кг/м²
-  cutK: number; // множитель к расценке резки чёрной стали
+  cutGroup: CutGroup; // колонка прайса резки
   bendK: number; // множитель к расценке гибки
   policy: SheetPolicy; // как списывается лист
   fallbackPricePerKg: number; // если mc.ru недоступен, ₽/кг с НДС
@@ -50,7 +53,7 @@ export const MATERIALS: Material[] = [
     short: 'Ст3',
     density: 7850,
     extraKgM2: 0,
-    cutK: 1,
+    cutGroup: 'steel',
     bendK: 1,
     policy: 'length',
     fallbackPricePerKg: 64,
@@ -65,7 +68,7 @@ export const MATERIALS: Material[] = [
     short: '08пс х/к',
     density: 7850,
     extraKgM2: 0,
-    cutK: 1,
+    cutGroup: 'steel',
     bendK: 1,
     policy: 'length',
     fallbackPricePerKg: 66,
@@ -83,7 +86,7 @@ export const MATERIALS: Material[] = [
     short: '09Г2С',
     density: 7850,
     extraKgM2: 0,
-    cutK: 1.15,
+    cutGroup: 'steel',
     bendK: 1.15,
     policy: 'length',
     fallbackPricePerKg: 70,
@@ -98,7 +101,7 @@ export const MATERIALS: Material[] = [
     short: 'Рифл. Ст3',
     density: 7850,
     extraKgM2: 1.8,
-    cutK: 1.05,
+    cutGroup: 'steel',
     bendK: 1.2,
     policy: 'length',
     fallbackPricePerKg: 66,
@@ -117,7 +120,7 @@ export const MATERIALS: Material[] = [
     short: 'Оцинк.',
     density: 7850,
     extraKgM2: 0,
-    cutK: 1.1,
+    cutGroup: 'steel',
     bendK: 1,
     policy: 'length',
     fallbackPricePerKg: 85,
@@ -132,7 +135,7 @@ export const MATERIALS: Material[] = [
     short: 'AISI 304',
     density: 7900,
     extraKgM2: 0,
-    cutK: 1.8,
+    cutGroup: 'stainless',
     bendK: 1.5,
     policy: 'whole', // цех обычно докупает такой металл целыми листами
     fallbackPricePerKg: 310,
@@ -150,7 +153,7 @@ export const MATERIALS: Material[] = [
     short: 'AISI 321',
     density: 7900,
     extraKgM2: 0,
-    cutK: 1.8,
+    cutGroup: 'stainless',
     bendK: 1.5,
     policy: 'whole', // цех обычно докупает такой металл целыми листами
     fallbackPricePerKg: 360,
@@ -168,7 +171,7 @@ export const MATERIALS: Material[] = [
     short: 'AISI 430',
     density: 7700,
     extraKgM2: 0,
-    cutK: 1.6,
+    cutGroup: 'stainless',
     bendK: 1.3,
     policy: 'whole', // цех обычно докупает такой металл целыми листами
     fallbackPricePerKg: 190,
@@ -183,7 +186,7 @@ export const MATERIALS: Material[] = [
     short: 'АМг2',
     density: 2680,
     extraKgM2: 0,
-    cutK: 1.5,
+    cutGroup: 'aluminum',
     bendK: 1.2,
     policy: 'whole', // цех обычно докупает такой металл целыми листами
     fallbackPricePerKg: 600,
@@ -198,7 +201,7 @@ export const MATERIALS: Material[] = [
     short: 'АМг2 рифл.',
     density: 2680,
     extraKgM2: 0.4,
-    cutK: 1.5,
+    cutGroup: 'aluminum',
     bendK: 1.3,
     policy: 'whole', // цех обычно докупает такой металл целыми листами
     fallbackPricePerKg: 670,
@@ -213,7 +216,7 @@ export const MATERIALS: Material[] = [
     short: 'АМг5',
     density: 2650,
     extraKgM2: 0,
-    cutK: 1.6,
+    cutGroup: 'aluminum',
     bendK: 1.3,
     policy: 'whole', // цех обычно докупает такой металл целыми листами
     fallbackPricePerKg: 650,

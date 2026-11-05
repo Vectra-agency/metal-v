@@ -259,9 +259,10 @@ export function buildAiContext(order: Order, res: OrderResult | null, book: Pric
       density: m.density,
       policy: s.policy[m.id] ?? m.policy,
       thicknesses: m.thicknesses,
+      cutGroup: m.cutGroup,
     })),
     rates: {
-      cutting: s.cutting.map((x) => ({ t: x.t, perM: x.perM, pierce: x.pierce })),
+      cutting: s.cutting.map((x) => ({ t: x.t, steel: x.steel, stainless: x.stainless, aluminum: x.aluminum, copper: x.copper })),
       bending: s.bending.map((x) => ({ t: x.t, perBend: x.perBend })),
       bendLenK: s.bendLenK.map((x) => ({ upTo: x.upTo, k: x.k })),
       bendSetup: s.bendSetup,

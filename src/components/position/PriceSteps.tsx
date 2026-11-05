@@ -3,7 +3,7 @@ import type { ReactElement, ReactNode } from 'react';
 import { CatDot, type CatKey } from '@/components/common/CostBar.tsx';
 import { Money } from '@/components/common/Money.tsx';
 import { getMaterial } from '@/core/materials.ts';
-import { fmtSheet, type GroupResult, type PosResult, type Settings } from '@/core/pricing.ts';
+import { CUT_GROUPS, fmtSheet, type GroupResult, type PosResult, type Settings } from '@/core/pricing.ts';
 import { kg, m as meters, n0, n1, n2, NBSP, pct, rub, rub0, thick } from '@/format.ts';
 import type { OrderPosition } from '@/order.ts';
 import type { QuoteLine } from '@/quote.ts';
@@ -90,14 +90,26 @@ function Steps({ p, r, g, line, kop, settings, markupPct }: Omit<PriceStepsProps
         </span>
       </Step>
       <Step cat="cut" title="Резка" value={r.piece.cut + r.piece.pierce}>
-        {n2(r.cutM)}
-        {NBSP}м × {n1(r.rate.perM)}
-        {NBSP}₽/м = {rub(r.piece.cut)}; врезки {r.pierces} × {n1(r.rate.pierce)}
-        {NBSP}₽ = {rub(r.piece.pierce)}
-        {r.rate.cutK !== 1 && <span className="opacity-80"> (коэфф. материала {n2(r.rate.cutK)} уже учтён)</span>}
+        {r.rate.perM != null ? (
+          <>
+            {n2(r.cutM)}
+            {NBSP}м реза × {n1(r.rate.perM)}
+            {NBSP}₽/м = {rub(r.piece.cut)}
+            <span className="opacity-80">
+              {' '}
+              (прайс: {CUT_GROUPS.find((g) => g.key === r.rate.group)?.label.toLowerCase()}, строка {n1(r.rate.rowT ?? p.thickness)}
+              {NBSP}мм{r.rate.rowT != null && Math.abs(r.rate.rowT - p.thickness) > 1e-9 ? `, толщина ${n1(p.thickness)} мм — по ближайшей большей` : ''})
+            </span>
+          </>
+        ) : (
+          <span className="text-warn">
+            В прайсе резки нет цены для «{CUT_GROUPS.find((g) => g.key === r.rate.group)?.label.toLowerCase()}» {n1(p.thickness)}
+            {NBSP}мм — резка не посчитана. Задайте цену в «Расценках» → «Резка».
+          </span>
+        )}
         {r.split && (
           <span className="mt-1 block text-warn">
-            Деталь длиннее листа — считаем из {r.split.pieces} частей: +{meters(r.split.extraCut)} реза и +{r.split.pieces - 1} врезки на шт.
+            Деталь длиннее листа — считаем из {r.split.pieces} частей: +{meters(r.split.extraCut)} реза на шт.
           </span>
         )}
       </Step>
