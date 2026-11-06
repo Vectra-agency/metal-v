@@ -27,6 +27,7 @@ import {
   type StageStatus,
 } from '../pipeline.ts';
 import { ensurePrices, orderPairs, pairKey, stalePairs, type EnsurePricesResult, type Pair } from '../prices.ts';
+import { applyRequestQty, qtyLinesFromText } from '../requestQty.ts';
 import { isJunkFile, skipHints } from '../components/shell/skipHints.ts';
 import { appendJournal, openSheet, setAiCardOpen } from './actions.ts';
 import { getDerived } from './derived.tsx';
@@ -196,7 +197,7 @@ async function parseAndRun(files: File[], folderName?: string): Promise<void> {
 
   let r: ParseResult;
   try {
-    const ex = { positions: before.positions, documents: before.documents ?? [], requestLines: before.requestLines ?? [] };
+    const ex = { positions: before.positions, documents: before.documents ?? [], requestLines: before.requestLines ?? [], request: before.request ?? '' };
     r = await parseFiles(files, ex, importDefaults(before.positions), (p) => gen === orderGen && patchPipeline({ parse: p }));
   } catch (e) {
     if (gen !== orderGen) return;
@@ -516,8 +517,26 @@ export function showResultNow(): void {
 }
 
 /** Заявка клиента. Вставили во время анализа, начатого без заявки, — один перезапуск анализа (после паузы ввода) */
+/** Количество из вставленной заявки — после паузы ввода, чтобы «1» из набираемого «10» не проставилось */
+let requestQtyTimer: ReturnType<typeof setTimeout> | null = null;
+const REQUEST_QTY_DEBOUNCE_MS = 700;
+
+function applyRequestText(): void {
+  const o = getState().order;
+  const lines = qtyLinesFromText(o.request ?? '');
+  const r = applyRequestQty(o.positions, lines);
+  if (!r.applied) return;
+  setOrder((cur) => ({ ...cur, positions: applyRequestQty(cur.positions, lines).positions }));
+  toast.success(`Количество из заявки проставлено: ${r.applied} ${plural(r.applied, 'позиция', 'позиции', 'позиций')}`);
+}
+
 export function setRequest(text: string): void {
   setOrder((o) => (o.request === text ? o : { ...o, request: text }));
+  if (requestQtyTimer) clearTimeout(requestQtyTimer);
+  requestQtyTimer = setTimeout(() => {
+    requestQtyTimer = null;
+    applyRequestText();
+  }, REQUEST_QTY_DEBOUNCE_MS);
   const s = getState();
   const run = s.ai.run;
   if (!run || run.restarted || run.requestAtStart.trim() || s.pipeline.stages.ai.status !== 'running' || !text.trim()) return;

@@ -1,11 +1,11 @@
-// «Резка»: прайс на лазерную резку — ₽ за погонный метр реза по толщине и колонке материала.
+// «Резка»: прайс на лазерную резку — ₽ за погонный метр реза по толщине и колонке материала, плюс ₽ за врезку.
 // Толщина без своей строки считается по ближайшей большей строке; пустая ячейка — такой резки в прайсе нет.
 import { useRef, type ReactElement } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button.tsx';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table.tsx';
 import { NumInput } from '@/components/common/NumInput.tsx';
-import { parseCutPriceCsv } from '@/core/cutPrice.ts';
+import { parseCutPriceCsv, piercesFor } from '@/core/cutPrice.ts';
 import { CUT_GROUPS, type CutRow } from '@/core/pricing.ts';
 import { n1 } from '@/format.ts';
 import { patchSettings } from '@/store/actions.ts';
@@ -30,7 +30,10 @@ export function CuttingTab(): ReactElement {
 
   const add = () => {
     const last = rows.at(-1);
-    set([...rows, { t: (last?.t ?? 0) + 1, steel: last?.steel ?? null, stainless: last?.stainless ?? null, aluminum: last?.aluminum ?? null, copper: last?.copper ?? null }]);
+    set([
+      ...rows,
+      { t: (last?.t ?? 0) + 1, steel: last?.steel ?? null, stainless: last?.stainless ?? null, aluminum: last?.aluminum ?? null, copper: last?.copper ?? null, pierce: last?.pierce ?? null },
+    ]);
     focus.afterAdd('set-cut-t', rows.length);
   };
   const del = (i: number) => {
@@ -40,10 +43,12 @@ export function CuttingTab(): ReactElement {
 
   const importCsv = async (f: File) => {
     try {
-      const { rows: next } = parseCutPriceCsv(await f.text());
+      const parsed = parseCutPriceCsv(await f.text());
       const prev = getState().settings.cutting;
+      // в прайсе нет колонки «врезка» — врезки остаются прежними (по толщине)
+      const next = parsed.pierce ? parsed.rows : parsed.rows.map((r) => ({ ...r, pierce: piercesFor(prev, r.t) }));
       set(next);
-      undoToast({ message: `Прайс резки загружен: ${next.length} строк из «${f.name}»`, undo: () => set(prev) });
+      undoToast({ message: `Прайс резки загружен: ${next.length} строк из «${f.name}»${parsed.pierce ? '' : ', врезки — прежние'}`, undo: () => set(prev) });
     } catch (e) {
       toast.error(`Не удалось прочитать прайс: ${(e as Error).message}`);
     }
@@ -52,14 +57,16 @@ export function CuttingTab(): ReactElement {
   return (
     <div className="flex flex-col gap-3">
       <Hint>
-        Цена за погонный метр реза по прайсу, ₽. Врезки отдельно не оплачиваются. Толщина без своей строки считается по ближайшей большей (1,5 мм — по строке
-        «2 мм»). Пустая ячейка — такой резки в прайсе нет: позиция получит предупреждение. Какой материал в какой колонке — на вкладке «Материалы».
+        Цена за погонный метр реза по прайсу, ₽, и за врезку — каждый контур детали (наружный и отверстия) режется с отдельного входа луча. Толщина без
+        своей строки считается по ближайшей большей (1,2 мм — по строке «1,5 мм»). Пустая ячейка — такой резки в прайсе нет: позиция получит
+        предупреждение. Колонка материала и коэффициент к прайсу (09Г2С — ×1,15) — на вкладке «Материалы». Врезки и строка 20 мм подобраны по
+        счёту «Лазерной резки СПб» — правьте под своего подрядчика.
       </Hint>
       <div className="flex flex-wrap items-center gap-2">
         <Button variant="outline" size="sm" onClick={() => file.current?.click()}>
           Загрузить прайс из CSV…
         </Button>
-        <span className="text-xs text-muted-foreground">колонки: толщина, сталь чёрная, нерж., алюминий, медь/латунь</span>
+        <span className="text-xs text-muted-foreground">колонки: толщина, сталь чёрная, нерж., алюминий, медь/латунь (и «врезка», если есть)</span>
         <input
           ref={file}
           type="file"
@@ -74,7 +81,7 @@ export function CuttingTab(): ReactElement {
       </div>
       <div ref={focus.ref} className="flex flex-col items-start gap-3">
         <div className="w-full overflow-x-auto rounded-lg border">
-          <Table className="min-w-[560px] text-[13px]">
+          <Table className="min-w-[660px] text-[13px]">
             <TableHeader>
               <TableRow className="hover:bg-transparent">
                 <TableHead className={TH}>Толщина до, мм</TableHead>
@@ -83,6 +90,9 @@ export function CuttingTab(): ReactElement {
                     {g.label}
                   </TableHead>
                 ))}
+                <TableHead className={`${TH} text-right`} title="₽ за каждую врезку (контур детали), для всех материалов">
+                  Врезка
+                </TableHead>
                 <TableHead className="w-9 px-1">
                   <span className="sr-only">Удалить</span>
                 </TableHead>
@@ -123,6 +133,20 @@ export function CuttingTab(): ReactElement {
                       />
                     </TableCell>
                   ))}
+                  <TableCell className={TDN}>
+                    <NumInput
+                      size="sm"
+                      value={r.pierce ?? 0}
+                      allowEmpty
+                      placeholder="—"
+                      onChange={(v) => edit(i, { pierce: v > 0 ? v : null })}
+                      aria-label={`₽ за врезку, до ${n1(r.t)} мм`}
+                      navCol="set-cut-pierce"
+                      navRow={i}
+                      suffix="₽"
+                      className="w-20"
+                    />
+                  </TableCell>
                   <TableCell className="px-1 py-1 text-right">
                     <RowDelete onClick={() => del(i)} disabled={rows.length <= 1} />
                   </TableCell>

@@ -356,7 +356,7 @@ function PieceMoney({ v, zeroDash }: { v: number | null; zeroDash?: boolean }): 
 function CostBreakdown({ r }: { r: PosResult }): ReactElement {
   const rows: { cat: 'material' | 'cut' | 'bend' | 'extras'; label: string; v: number; sub?: string }[] = [
     { cat: 'material', label: 'Металл', v: r.piece.material },
-    { cat: 'cut', label: 'Резка', v: r.piece.cut + r.piece.pierce, sub: r.rate.perM != null ? `${n2(r.cutM)} м × ${n1(r.rate.perM)} ₽/м` : 'нет цены в прайсе резки' },
+    { cat: 'cut', label: 'Резка', v: r.piece.cut + r.piece.pierce, sub: r.rate.perM != null ? `${n2(r.cutM)} м × ${n1(r.rate.perM * r.rate.cutK)} ₽/м + ${r.pierces} вр. × ${n1(r.rate.pierce * r.rate.cutK)} ₽` : 'нет цены в прайсе резки' },
     { cat: 'bend', label: 'Гибка', v: r.piece.bend },
     { cat: 'extras', label: 'Доп. работы', v: r.piece.extras },
   ];

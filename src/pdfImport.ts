@@ -96,6 +96,8 @@ function previewOf(g: ReturnType<typeof buildGeometry>): Preview {
   };
 }
 
+const polyLength = (pts: Vec[]) => pts.reduce((a, p, i) => (i ? a + Math.hypot(p.x - pts[i - 1].x, p.y - pts[i - 1].y) : 0), 0);
+
 /** Геометрия позиции из распознанного PDF */
 export function geometryPatch(meta: PdfMeta, prev?: OrderPosition): Partial<OrderPosition> {
   const g = buildGeometry(meta);
@@ -108,6 +110,7 @@ export function geometryPatch(meta: PdfMeta, prev?: OrderPosition): Partial<Orde
     bends: keepBends ? prev!.bends : bendsDetected,
     detectedBends: bendsDetected,
     bendLength: bendsDetected ? Math.round(g.bendMax) : Math.round(Math.max(g.width, g.height)),
+    bendLengths: bendsDetected ? g.bends.map((l) => Math.round(polyLength(l))) : undefined,
   };
 }
 

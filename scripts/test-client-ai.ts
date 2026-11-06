@@ -913,7 +913,10 @@ await test('parseFiles (Node): дубликаты, архивы, прочие ф
   assert.ok(r.warnings.some((w) => /распаковать/.test(w)));
   assert.ok(r.notes.some((n) => /Пропущено файлов/.test(n)));
   assert.deepEqual(progress, [1, 2, 3]);
-  assert.equal(r.stats.noQty, 1);
+  // количество — из заявки .txt («БВС-305Х300.000 — 3 шт»), без ИИ
+  assert.equal(r.stats.noQty, 0);
+  assert.equal(r.positions[0].qty, 3);
+  assert.equal(r.positions[0].qtySource, 'request');
   // повторная загрузка тех же файлов — всё пропущено (браузерного хранилища в Node нет — PDF не «восстановлен»)
   const again = await parseFiles(files, { positions: r.positions, documents: r.documents }, { materialId: 'st3', thickness: 2 }, undefined, { importPdf });
   assert.equal(again.stats.duplicates, 3);
@@ -1060,6 +1063,93 @@ await test('updateStage: время начала и конца', () => {
   s = updateStage(s, 'ai', 'done', 'готово', 250);
   assert.deepEqual([s.ai.status, s.ai.detail, s.ai.finishedAt], ['done', 'готово', 250]);
   assert.equal(s.files.status, 'pending');
+});
+
+
+// ---------- сверка со счетами: распознавание без ИИ и модель резки ----------
+
+const { qtyLinesFromText, applyRequestQty } = await import('../src/requestQty.ts');
+const { mergeImports } = await import('../src/merge.ts');
+const { detectMaterial } = await import('../src/core/pdfAnalyze.ts');
+
+await test('количество из текста заявки: таблица, «— 5 шт», «10шт.», цена «руб/шт» не путается', () => {
+  const lines = qtyLinesFromText(
+    'Прошу счет на А сталь\n\nБлок выхода сброса БВС-305Х300.000\t3\tшт\nНГЭН.745535.0021-01 - 5 шт — 995 руб/шт (из стали 08пс)\nНГЭН.745428.0003-1700 10шт.\nНГЭН.1 кол-во 3',
+  );
+  assert.deepEqual(lines, [
+    { designation: 'БВС-305Х300.000', qty: 3 },
+    { designation: 'НГЭН.745535.0021-01', qty: 5 },
+    { designation: 'НГЭН.745428.0003-1700', qty: 10 },
+  ]);
+});
+
+await test('количество из заявки: только где не найдено в файлах или уже взято из заявки; ручная правка — не трогается', () => {
+  const pos = (name: string, qty: number, guessed: boolean, qtySource?: 'request') =>
+    ({ ...manualPosition({ name, materialId: 'st3', thickness: 2, qty, width: 100, height: 100, holes: 0, holeD: 0, bends: 0 }), guessed: { material: false, thickness: false, qty: guessed }, qtySource }) as OrderPosition;
+  const ps = [pos('А-1.1', 1, true), pos('А-1.2', 7, false), pos('А-1.3', 4, false, 'request')];
+  const r = applyRequestQty(ps, qtyLinesFromText('А-1.1 — 5 шт\nА-1.2 — 9 шт\nА-1.3 — 6 шт'));
+  assert.equal(r.applied, 2);
+  assert.deepEqual(r.positions.map((p) => [p.qty, p.guessed.qty, p.qtySource]), [[5, false, 'request'], [7, false, undefined], [6, false, 'request']]);
+  assert.equal(applyRequestQty(ps, []).positions, ps);
+});
+
+await test('штамп: рифлёный АМг2 по номеру ТУ («квинтет» без слова «рифл»)', () => {
+  const t = (str: string) => ({ str, x: 0, y: 0, w: 10, h: 3, angle: 0 });
+  assert.equal(detectMaterial([t('Лист 3 ТУ 1-801-20-02'), t('АМг2 ГОСТ 21631-76')]).materialId, 'amg2r');
+  assert.equal(detectMaterial([t('Лист 3 ГОСТ 21631-76'), t('АМг2 ГОСТ 21631-76')]).materialId, 'amg2');
+});
+
+await test('projects/2: DXF исполнений получают гибы, рифлёный материал и сверку массы с чертежа; базовое исполнение исключено', async () => {
+  const dir = join(PROJECTS, '2');
+  const files = ['НГЭН.745428.0003 Короб защитный (изм.2).pdf', 'НГЭН.745428.0003-0700 amg2 s3mm.dxf', 'НГЭН.745428.0003-1700 amg2 s3mm.dxf'].map(
+    (n) => new File([readFileSync(join(dir, n))], n),
+  );
+  const r = await parseFiles(files, [], { materialId: 'st3', thickness: 2 }, undefined, {
+    importPdf: async (f, defs) => positionsFromPages(await readPdf(pdfjs as unknown as PdfJsLike, await f.arrayBuffer()), f.name, pdfFileKey(f), defs),
+  });
+  const by = (n: string) => r.positions.find((p) => p.name === n)!;
+  for (const n of ['НГЭН.745428.0003-0700', 'НГЭН.745428.0003-1700']) {
+    const p = by(n);
+    assert.equal(p.materialId, 'amg2r', `${n}: материал по штампу`);
+    assert.equal(p.bends, 4, `${n}: гибы с чертежа`);
+    assert.equal(p.disabled, undefined);
+    assert.ok(p.pdf && p.pdf.meta.row >= 0, `${n}: строка таблицы для сверки массы`);
+  }
+  assert.equal(by('НГЭН.745428.0003').disabled, true);
+  assert.ok(r.notes.some((n) => /базовое исполнение исключено/.test(n)));
+});
+
+await test('гибы с зеркального листа того же PDF; лист без файла, которого нет в заявке, исключается', () => {
+  const mk = (name: string, file: string, bends: number, source: 'dxf' | 'pdf'): OrderPosition =>
+    ({
+      ...manualPosition({ name, materialId: '08ps', thickness: 2, qty: 1, width: 855, height: 1580, holes: 0, holeD: 0, bends: 0 }),
+      bends,
+      detectedBends: bends,
+      bendLengths: bends ? Array(bends).fill(855) : undefined,
+      source,
+      pdf: { fileKey: 'k', geometryFromPdf: source === 'pdf', notes: [], meta: { fileName: file } as never },
+    }) as OrderPosition;
+  const m = mergeImports([mk('НГЭН.А86.11.11.1201', '1201.pdf', 0, 'dxf'), mk('НГЭН.А86.11.11.1201-01', '1201.pdf', 3, 'pdf')], [], [], [{ designation: 'НГЭН.А86.11.11.1201', qty: 5 }]);
+  const [a, b] = m.positions;
+  assert.deepEqual([a.bends, a.qty, a.disabled], [3, 5, undefined]);
+  assert.equal(b.disabled, true);
+});
+
+await test('резка по прайсу: метры × ₽/м + врезки × ₽, 09Г2С ×1,15, толщина — по ближайшей большей строке; гибы по своим длинам', () => {
+  const book: PriceBook = { updatedAt: null, region: 'СПб', materials: {} };
+  const p = (id: string, materialId: string, thickness: number, extra: Partial<OrderPosition> = {}) =>
+    ({ ...manualPosition({ name: id, materialId, thickness, qty: 1, width: 200, height: 100, holes: 3, holeD: 10, bends: 0 }), id, ...extra }) as OrderPosition;
+  const s = structuredClone(DEFAULT_SETTINGS);
+  const r = computeOrder([p('a', 'st3', 1.2), p('b', '09g2s', 10), p('c', 'st3', 2, { bends: 2, bendLength: 1500, bendLengths: [200, 1500] })], book, s);
+  const a = r.positions.get('a')!;
+  assert.equal(a.rate.rowT, 1.5);
+  assert.equal(a.piece.pierce, 4 * 8); // контур + 3 отверстия, 1,5 мм — 8 ₽
+  const b = r.positions.get('b')!;
+  assert.ok(Math.abs(b.piece.cut - b.cutM * 167 * 1.15) < 1e-6);
+  assert.ok(Math.abs(b.piece.pierce - 4 * 28 * 1.15) < 1e-6);
+  const c = r.positions.get('c')!;
+  const perBend = 70; // 2 мм
+  assert.ok(Math.abs(c.piece.bend - perBend * (0.8 + 1.4)) < 1e-6, 'гиб 200 мм ×0,8 и гиб 1500 мм ×1,4');
 });
 
 console.log(`\n${passed} пройдено, ${failed.length} не пройдено${failed.length ? ': ' + failed.join('; ') : ''}`);

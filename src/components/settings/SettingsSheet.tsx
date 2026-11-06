@@ -125,7 +125,7 @@ export function parseSettingsFile(text: string): { settings: Settings; quote: Qu
 
   const s = structuredClone(DEFAULT_SETTINGS);
   // старые файлы (ставка ₽/м + врезка) — резка остаётся по прайсу
-  if ('cutting' in j) s.cutting = normalizeCutRows(j.cutting) ?? s.cutting;
+  if ('cutting' in j) s.cutting = normalizeCutRows(j.cutting, DEFAULT_SETTINGS.cutting) ?? s.cutting;
   if ('bending' in j) s.bending = numRows(j.bending, 'bending', ['t', 'perBend']);
   if ('bendLenK' in j) s.bendLenK = numRows(j.bendLenK, 'bendLenK', ['upTo', 'k']);
   for (const k of NUM_KEYS) {
@@ -152,9 +152,9 @@ export function parseSettingsFile(text: string): { settings: Settings; quote: Qu
     if (!isObj(j.matK)) bad('matK');
     const m: Settings['matK'] = {};
     for (const [id, v] of Object.entries(j.matK as Obj)) {
-      if (!isObj(v) || (v.bendK !== undefined && !isNum(v.bendK))) bad('matK');
-      const k = v as { bendK?: number };
-      m[id] = k.bendK !== undefined ? { bendK: k.bendK } : {};
+      if (!isObj(v) || (v.cutK !== undefined && !isNum(v.cutK)) || (v.bendK !== undefined && !isNum(v.bendK))) bad('matK');
+      const k = v as { cutK?: number; bendK?: number };
+      m[id] = { ...(k.cutK !== undefined ? { cutK: k.cutK } : {}), ...(k.bendK !== undefined ? { bendK: k.bendK } : {}) };
     }
     s.matK = m;
   }

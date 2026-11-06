@@ -40,7 +40,7 @@ export function MaterialsTab(): ReactElement {
   const policy = useStore((s) => s.settings.policy);
   // узкий экран: списание — под названием материала, чтобы таблица не уезжала вбок
   const wide = useMediaQuery('(min-width: 640px)');
-  const setK = (id: string, patch: { bendK?: number }) => patchSettings({ matK: { ...matK, [id]: { ...matK[id], ...patch } } });
+  const setK = (id: string, patch: { cutK?: number; bendK?: number }) => patchSettings({ matK: { ...matK, [id]: { ...matK[id], ...patch } } });
 
   return (
     <div className="flex flex-col gap-4">
@@ -66,7 +66,22 @@ export function MaterialsTab(): ReactElement {
                   <div className="text-xs text-muted-foreground tabular-nums">{n0(mt.density)} кг/м³</div>
                   {!wide && <PolicySelect mt={mt} value={policy[mt.id] ?? mt.policy} className="mt-1.5 w-full" />}
                 </TableCell>
-                <TableCell className={`${TD} text-muted-foreground`}>{CUT_GROUPS.find((g) => g.key === mt.cutGroup)?.label.toLowerCase()}</TableCell>
+                <TableCell className={TD}>
+                  <div className="flex items-center gap-2">
+                    <span className="min-w-24 text-muted-foreground">{CUT_GROUPS.find((g) => g.key === mt.cutGroup)?.label.toLowerCase()}</span>
+                    <NumInput
+                      size="sm"
+                      value={matK[mt.id]?.cutK ?? mt.cutK}
+                      onChange={(cutK) => setK(mt.id, { cutK })}
+                      aria-label={`Коэффициент к прайсу резки: ${mt.label}`}
+                      title="Множитель к цене резки и врезок по прайсу"
+                      navCol="set-mat-cutK"
+                      navRow={i}
+                      suffix="×"
+                      className="w-16"
+                    />
+                  </div>
+                </TableCell>
                 <TableCell className={TDN}>
                   <NumInput
                     size="sm"

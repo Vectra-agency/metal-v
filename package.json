@@ -11,6 +11,7 @@
     "serve": "vite build && node server/index.ts",
     "prices": "node scripts/update-prices.ts",
     "calibrate": "node scripts/calibrate.ts",
+    "check-invoices": "node scripts/check-invoices.ts",
     "analyze": "node scripts/analyze.ts",
     "analyze-pdf": "node scripts/analyze-pdf.ts"
   },

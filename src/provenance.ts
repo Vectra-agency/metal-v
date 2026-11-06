@@ -40,6 +40,7 @@ export function originOf(base: OrderPosition, field: OriginField, changes: AiCha
     if (sameT(fromName?.thickness, base.thickness)) return 'file';
     return 'manual';
   }
+  if (base.qtySource === 'request') return 'request';
   if (fromName?.qty === base.qty) return 'file';
   const key = desigKey(base.name);
   if (key && requestLines.some((l) => l.qty === base.qty && desigKey(l.designation) === key)) return 'request';

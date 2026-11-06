@@ -42,7 +42,7 @@ export function internalCsv(title: string, positions: OrderPosition[], res: Orde
   rows.push([]);
   if (title.trim()) rows.push(['', q(title.trim())]);
   line('Металл', T.material);
-  line('Резка (по прайсу, ₽/м реза)', T.cutting);
+  line('Резка (метры реза и врезки по прайсу)', T.cutting);
   line('Гибка', T.bending);
   line('Доп. работы', T.extras);
   if (T.delivery) line('Доставка', T.delivery);

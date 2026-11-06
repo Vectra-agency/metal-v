@@ -161,7 +161,7 @@ export interface AiContext {
   materials: AiMaterialRef[];
   rates: {
     /** прайс резки, ₽ за погонный метр реза; строка t действует для толщин до t включительно; null — нет в прайсе */
-    cutting: { t: number; steel: number | null; stainless: number | null; aluminum: number | null; copper: number | null }[];
+    cutting: { t: number; steel: number | null; stainless: number | null; aluminum: number | null; copper: number | null; pierce: number | null }[];
     bending: { t: number; perBend: number }[]; // гиб до 1 м
     bendLenK: { upTo: number; k: number }[];
     bendSetup: number;

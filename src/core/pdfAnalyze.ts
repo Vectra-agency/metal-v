@@ -125,7 +125,8 @@ export function detectMaterial(texts: PdfText[]): { materialId?: string; materia
   else if (/AISI\s*304/.test(raw) || /08Х18Н10(?!Т)/.test(n)) pick('aisi304', 'AISI 304');
   else if (/AISI\s*430/.test(raw) || /08Х17/.test(n)) pick('aisi430', 'AISI 430');
   else if (/АМГ\s?5/.test(n)) pick('amg5', 'АМг5');
-  else if (/АМГ\s?2/.test(n)) pick(/РИФЛ|КВИНТЕТ/.test(n) ? 'amg2r' : 'amg2', 'АМг2');
+  // рифлёный АМг2 («квинтет») в штампе обычно только номером ТУ: «Лист 3 ТУ 1-801-20-02 / АМг2 ГОСТ 21631»
+  else if (/АМГ\s?2/.test(n)) pick(/РИФЛ|КВИНТЕТ|ТУ\s*1-801-20|ТУ\s*1-3-87|ТУ\s*1-3-71|ТУ\s*1-804-432/.test(n) ? 'amg2r' : 'amg2', 'АМг2');
   else if (/09Г2С/.test(n)) pick('09g2s', '09Г2С');
   else if (/ОЦИНК|14918|DX51/.test(n)) pick('ocink', 'оцинкованная');
   else if (riffled) pick('rifl', 'рифлёный лист');

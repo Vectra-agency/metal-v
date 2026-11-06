@@ -12,6 +12,7 @@ import { buildAiContext, contextHash } from './ai/context.ts';
 import { drawingImages } from './ai/images.ts';
 import { plural, rub0 } from './format.ts';
 import { mergeImports } from './merge.ts';
+import { applyRequestQty, qtyLinesFromText } from './requestQty.ts';
 import { importDxf as importDxfFile, orderSettings, type ImportDefaults, type Order, type OrderPosition } from './order.ts';
 import { desigKey, importPdf as importPdfFile, pdfFileKey, restorePdf as restorePdfFile, type PdfImportResult } from './pdfImport.ts';
 import { ensurePrices, orderPairs, pairKey, type EnsurePricesResult } from './prices.ts';
@@ -107,6 +108,7 @@ export interface ExistingOrderData {
   positions: OrderPosition[];
   documents?: AiDocument[];
   requestLines?: QtyLine[];
+  request?: string; // текст заявки, вставленный вручную: количество из него — позициям, где его нет
 }
 
 /** Подмена импортёров (Node-скрипты читают PDF через pdfjs-dist/legacy) */
@@ -258,15 +260,20 @@ export async function parseFiles(
         addedPdf.push(...r.positions);
         qty.push(...r.qty);
         pdfNotes.push(...r.notes);
-        for (const d of r.documents ?? []) addDoc(d);
+        for (const d of r.documents ?? []) {
+          addDoc(d);
+          qty.push(...qtyLinesFromText(d.text)); // заявка/спецификация в PDF — и строками текста
+        }
       } else if (RE_DXF.test(f.name)) {
         stats.dxf++;
         addedDxf.push(await doImportDxf(f, defaults));
       } else {
         stats.txt++;
         const text = clipText(decodeText(await f.arrayBuffer()), AI_LIMITS.documentChars);
-        if (text) addDoc({ fileName: f.name, text });
-        else pdfNotes.push(`${f.name}: пустой файл`);
+        if (text) {
+          addDoc({ fileName: f.name, text });
+          qty.push(...qtyLinesFromText(text)); // заявка письмом: «БВС-305Х300.000 — 3 шт»
+        } else pdfNotes.push(`${f.name}: пустой файл`);
       }
     } catch (e) {
       errors.push(`${f.name}: ${(e as Error).message}`);
@@ -278,6 +285,8 @@ export async function parseFiles(
   const byFile = (a: OrderPosition, b: OrderPosition) => (a.fileName ?? '').localeCompare(b.fileName ?? '', 'ru');
   addedDxf.sort(byFile);
   addedPdf.sort(byFile);
+  const qtyLines = qty.filter((l, i) => qty.findIndex((x) => desigKey(x.designation) === desigKey(l.designation)) === i);
+  qty.splice(0, qty.length, ...qtyLines);
   const m = mergeImports(ex.positions, addedDxf, addedPdf, qty);
   const before = new Set(ex.positions.map((p) => p.id));
   const addedIds = m.positions.filter((p) => !before.has(p.id)).map((p) => p.id);
@@ -295,6 +304,12 @@ export async function parseFiles(
       return { ...p, qty: q, guessed: { ...p.guessed, qty: false } };
     });
     if (n) notes.push(`Количество из ранее загруженной заявки проставлено у ${n} поз.`);
+  }
+  // заявка, вставленная текстом раньше файлов: количество — позициям, где его нет в файлах
+  const fromRequest = applyRequestQty(positions, qtyLinesFromText(ex.request ?? ''));
+  if (fromRequest.applied) {
+    positions = fromRequest.positions;
+    notes.push(`Количество из текста заявки проставлено у ${fromRequest.applied} поз.`);
   }
   for (const l of qty) {
     const k = desigKey(l.designation);

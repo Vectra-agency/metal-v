@@ -35,7 +35,10 @@ function editIn(o: Order, id: string, patch: Partial<OrderPosition>): Order {
   };
   const same = guessed.material === p.guessed.material && guessed.thickness === p.guessed.thickness && guessed.qty === p.guessed.qty;
   const positions = o.positions.slice();
-  positions[i] = { ...p, ...r.patch, guessed: same ? p.guessed : guessed };
+  const next: OrderPosition = { ...p, ...r.patch, guessed: same ? p.guessed : guessed };
+  if (patch.bends !== undefined || patch.bendLength !== undefined) delete next.bendLengths;
+  if (patch.qty !== undefined) delete next.qtySource;
+  positions[i] = next;
   return r.ai === o.ai ? { ...o, positions } : { ...o, positions, ai: r.ai };
 }
 

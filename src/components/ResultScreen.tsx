@@ -8,6 +8,7 @@ import { TriangleAlert } from '@/components/common/icons.ts';
 import { AiCard } from '@/components/ai/AiCard.tsx';
 import { MetalTab } from '@/components/metal/MetalTab.tsx';
 import { KpiBand } from '@/components/money/KpiBand.tsx';
+import { QtyMissingBanner } from '@/components/money/QtyMissingBanner.tsx';
 import { PositionsTab } from '@/components/positions/PositionsTab.tsx';
 import { PositionsToolbar } from '@/components/positions/PositionsToolbar.tsx';
 import { PricesTab } from '@/components/prices/PricesTab.tsx';
@@ -37,6 +38,7 @@ export function ResultScreen(): ReactElement {
   ];
   return (
     <>
+      <QtyMissingBanner />
       <KpiBand />
       <AiCard />
       <Tabs value={tab} onValueChange={(v) => setTab(v as TabId)} className="gap-0">

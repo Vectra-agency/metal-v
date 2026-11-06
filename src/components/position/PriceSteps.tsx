@@ -93,12 +93,14 @@ function Steps({ p, r, g, line, kop, settings, markupPct }: Omit<PriceStepsProps
         {r.rate.perM != null ? (
           <>
             {n2(r.cutM)}
-            {NBSP}м реза × {n1(r.rate.perM)}
-            {NBSP}₽/м = {rub(r.piece.cut)}
+            {NBSP}м реза × {n1(r.rate.perM * r.rate.cutK)}
+            {NBSP}₽/м = {rub(r.piece.cut)}; врезки {r.pierces} × {n1(r.rate.pierce * r.rate.cutK)}
+            {NBSP}₽ = {rub(r.piece.pierce)}
             <span className="opacity-80">
               {' '}
               (прайс: {CUT_GROUPS.find((g) => g.key === r.rate.group)?.label.toLowerCase()}, строка {n1(r.rate.rowT ?? p.thickness)}
-              {NBSP}мм{r.rate.rowT != null && Math.abs(r.rate.rowT - p.thickness) > 1e-9 ? `, толщина ${n1(p.thickness)} мм — по ближайшей большей` : ''})
+              {NBSP}мм{r.rate.rowT != null && Math.abs(r.rate.rowT - p.thickness) > 1e-9 ? `, толщина ${n1(p.thickness)} мм — по ближайшей большей` : ''}
+              {r.rate.cutK !== 1 ? `; коэффициент материала ×${n2(r.rate.cutK)}` : ''})
             </span>
           </>
         ) : (
@@ -109,7 +111,7 @@ function Steps({ p, r, g, line, kop, settings, markupPct }: Omit<PriceStepsProps
         )}
         {r.split && (
           <span className="mt-1 block text-warn">
-            Деталь длиннее листа — считаем из {r.split.pieces} частей: +{meters(r.split.extraCut)} реза на шт.
+            Деталь длиннее листа — считаем из {r.split.pieces} частей: +{meters(r.split.extraCut)} реза и +{r.split.pieces - 1} врезки на шт.
           </span>
         )}
       </Step>

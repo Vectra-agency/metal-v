@@ -33,6 +33,7 @@ export interface OrderPosition extends Position {
   source?: 'dxf' | 'pdf' | 'manual';
   pdf?: PdfInfo;
   drawingText?: string; // текст с чертежа для ИИ: технические требования, штамп, надписи (обрезан)
+  qtySource?: 'request'; // количество взято из заявки (её правка обновит его; ручная правка — снимает)
 }
 
 /** Запись журнала загрузки (что прочитано, пропущено, не распознано) */
@@ -202,6 +203,7 @@ export function positionFromDxf(buf: ArrayBuffer, fileName: string, defs: Import
     },
     bends: m.bendCount,
     bendLength: m.bendCount ? Math.round(m.bendMaxLen) : Math.round(Math.max(m.width, m.height)),
+    ...(m.bendCount ? { bendLengths: m.bendLens.map((l) => Math.round(l)) } : {}),
     extras: [],
     preview: makePreview(an),
     warnings,
@@ -304,6 +306,7 @@ function normalizePosition(raw: unknown): OrderPosition | null {
     qty: num(p.qty, 1),
     bends: num(p.bends, 0),
     bendLength: num(p.bendLength, 0),
+    bendLengths: Array.isArray(p.bendLengths) && p.bendLengths.every((l) => typeof l === 'number' && l > 0) ? p.bendLengths : undefined,
     extras: Array.isArray(p.extras) ? p.extras.filter((e) => isObj(e) && typeof e.label === 'string') : [],
     warnings: Array.isArray(p.warnings) ? p.warnings.filter((w) => typeof w === 'string') : [],
     guessed: { material: !!g?.material, thickness: !!g?.thickness, qty: !!g?.qty },
@@ -372,9 +375,9 @@ export function loadSettings(): Settings {
     const raw = localStorage.getItem(K_SETTINGS);
     if (raw) {
       const s: Settings = { ...structuredClone(DEFAULT_SETTINGS), ...JSON.parse(raw) };
-      // резка до прайса хранилась как ставка ₽/м + врезка — такие таблицы заменяются прайсом
-      s.cutting = normalizeCutRows(s.cutting) ?? structuredClone(DEFAULT_SETTINGS.cutting);
-      s.matK = Object.fromEntries(Object.entries(s.matK ?? {}).map(([id, k]) => [id, k?.bendK != null ? { bendK: k.bendK } : {}]));
+      // резка до прайса хранилась как ставка ₽/м + врезка — такие таблицы заменяются прайсом;
+      // прайс без колонки «врезка» получает врезки из прайса по умолчанию
+      s.cutting = normalizeCutRows(s.cutting, DEFAULT_SETTINGS.cutting) ?? structuredClone(DEFAULT_SETTINGS.cutting);
       return s;
     }
   } catch {

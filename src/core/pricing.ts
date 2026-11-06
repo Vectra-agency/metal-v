@@ -40,6 +40,7 @@ export interface Position {
   geom: PartGeometry;
   bends: number;
   bendLength: number; // мм, длина одного гиба
+  bendLengths?: number[]; // длины линий гиба, мм (из чертежа) — тогда каждый гиб считается по своей длине
   extras: Extra[];
   note?: string;
   disabled?: boolean;
@@ -54,6 +55,7 @@ export interface CutRow {
   stainless: number | null; // нержавейка
   aluminum: number | null; // алюминий
   copper: number | null; // медь, латунь
+  pierce: number | null; // ₽ за врезку (каждый контур — отдельный вход луча), для всех материалов × коэффициент материала
 }
 
 export const CUT_GROUPS: readonly { key: CutGroup; label: string }[] = [
@@ -89,28 +91,31 @@ export interface Settings {
   policy: Record<string, SheetPolicy>; // переопределение списания по материалу
   priceOverride: Record<string, number>; // `${mat}|${t}` → ₽/кг
   sheetChoice: Record<string, string>; // `${mat}|${t}` → 'W×L'
-  matK: Record<string, { bendK?: number }>; // поправки к материалам (гибка)
+  matK: Record<string, { cutK?: number; bendK?: number }>; // поправки к материалам: к прайсу резки и к гибке
   extraRates: ExtraRate[]; // ставки доп. операций для ИИ-анализа
   priceMaxAgeHours: number; // цены mc.ru старше — обновляются перед расчётом
 }
 
 export const DEFAULT_SETTINGS: Settings = {
-  // прайс «Лазерная резка» (₽ за погонный метр реза): строки 0,2–0,5 мм и 0,6–1 мм, дальше по толщине
+  // ₽ за погонный метр — прайс «Лазерная резка» (строки 0,2–0,5 и 0,6–1 мм, дальше по толщине), кроме 20 мм:
+  // по счёту № 9444 «Лазерная резка СПб» цех взял ≈ 950 ₽/м (в прайсе 557). Врезка (₽ за каждое отверстие и
+  // начало реза) в прайсе не указана — подобрана по тому же счёту: 1,5 мм ≈ 8 ₽, 2–6 мм ≈ 6–7 ₽, 10 мм ≈ 28 ₽.
   cutting: [
-    { t: 0.5, steel: 33, stainless: 42, aluminum: 39, copper: 43 },
-    { t: 1, steel: 39, stainless: 49, aluminum: 46, copper: 69 },
-    { t: 2, steel: 55, stainless: 63, aluminum: 63, copper: 103 },
-    { t: 3, steel: 63, stainless: 74, aluminum: 69, copper: 130 },
-    { t: 4, steel: 68, stainless: 88, aluminum: 83, copper: 167 },
-    { t: 5, steel: 71, stainless: 103, aluminum: 101, copper: null },
-    { t: 6, steel: 83, stainless: 158, aluminum: 133, copper: null },
-    { t: 8, steel: 114, stainless: 282, aluminum: 243, copper: null },
-    { t: 10, steel: 167, stainless: 583, aluminum: null, copper: null },
-    { t: 12, steel: 208, stainless: null, aluminum: null, copper: null },
-    { t: 14, steel: 295, stainless: null, aluminum: null, copper: null },
-    { t: 16, steel: 338, stainless: null, aluminum: null, copper: null },
-    { t: 18, steel: 482, stainless: null, aluminum: null, copper: null },
-    { t: 20, steel: 557, stainless: null, aluminum: null, copper: null },
+    { t: 0.5, steel: 33, stainless: 42, aluminum: 39, copper: 43, pierce: 6 },
+    { t: 1, steel: 39, stainless: 49, aluminum: 46, copper: 69, pierce: 7 },
+    { t: 1.5, steel: 55, stainless: 63, aluminum: 63, copper: 103, pierce: 8 },
+    { t: 2, steel: 55, stainless: 63, aluminum: 63, copper: 103, pierce: 6 },
+    { t: 3, steel: 63, stainless: 74, aluminum: 69, copper: 130, pierce: 6 },
+    { t: 4, steel: 68, stainless: 88, aluminum: 83, copper: 167, pierce: 7 },
+    { t: 5, steel: 71, stainless: 103, aluminum: 101, copper: null, pierce: 7 },
+    { t: 6, steel: 83, stainless: 158, aluminum: 133, copper: null, pierce: 7 },
+    { t: 8, steel: 114, stainless: 282, aluminum: 243, copper: null, pierce: 15 },
+    { t: 10, steel: 167, stainless: 583, aluminum: null, copper: null, pierce: 28 },
+    { t: 12, steel: 208, stainless: null, aluminum: null, copper: null, pierce: 34 },
+    { t: 14, steel: 295, stainless: null, aluminum: null, copper: null, pierce: 42 },
+    { t: 16, steel: 338, stainless: null, aluminum: null, copper: null, pierce: 50 },
+    { t: 18, steel: 482, stainless: null, aluminum: null, copper: null, pierce: 65 },
+    { t: 20, steel: 950, stainless: null, aluminum: null, copper: null, pierce: 80 },
   ],
   bending: [
     { t: 0.5, perBend: 50 },
@@ -251,13 +256,14 @@ function interp<T extends { t: number }>(rows: T[], t: number, f: (r: T) => numb
 }
 
 /** Цена резки по прайсу: строка — первая с толщиной не меньше t; null — в прайсе нет */
-export function cutRate(s: Settings, t: number, group: CutGroup): { perM: number | null; rowT: number | null } {
+export function cutRate(s: Settings, t: number, group: CutGroup): { perM: number | null; pierce: number; rowT: number | null } {
   const row = s.cutting
     .slice()
     .sort((a, b) => a.t - b.t)
     .find((r) => r.t >= t - 1e-9);
   const v = row?.[group];
-  return { perM: typeof v === 'number' && v > 0 ? v : null, rowT: row?.t ?? null };
+  const pc = row?.pierce;
+  return { perM: typeof v === 'number' && v > 0 ? v : null, pierce: typeof pc === 'number' && pc > 0 ? pc : 0, rowT: row?.t ?? null };
 }
 
 export function bendRate(s: Settings, t: number) {
@@ -316,7 +322,7 @@ export interface PosResult {
   cutM: number; // рез на штуку, м (с учётом разбиения)
   pierces: number;
   split: SplitInfo | null;
-  rate: { perM: number | null; rowT: number | null; group: CutGroup; perBend: number; lenK: number };
+  rate: { perM: number | null; pierce: number; cutK: number; rowT: number | null; group: CutGroup; perBend: number; lenK: number };
   share: number; // доля в металле группы
   piece: { material: number; cut: number; pierce: number; bend: number; extras: number; total: number };
   sum: { material: number; cut: number; pierce: number; bend: number; extras: number; total: number };
@@ -444,6 +450,7 @@ export function computeOrder(positions: Position[], book: PriceBook, s: Settings
     groups.push(g);
 
     const cr = cutRate(s, t, mat.cutGroup);
+    const cutK = s.matK?.[mat.id]?.cutK ?? mat.cutK; // 09Г2С режется медленнее — дороже прайса чёрной стали
     const perBend = bendRate(s, t) * (s.matK?.[mat.id]?.bendK ?? mat.bendK);
     for (const p of items) {
       const warnings: string[] = [];
@@ -453,17 +460,19 @@ export function computeOrder(positions: Position[], book: PriceBook, s: Settings
       const material = (chosen.materialCost * share) / p.qty;
       const cutM = (p.geom.cutLength + (split?.extraCut ?? 0)) / 1000;
       const pierces = p.geom.pierces + (split ? split.pieces - 1 : 0);
-      // резка — по прайсу за погонный метр, врезки отдельно не оплачиваются
-      const cut = cr.perM != null ? cutM * cr.perM : 0;
-      const pierce = 0;
+      // резка — метры × ₽/м по прайсу и врезки × ₽/врезку, всё × коэффициент материала
+      const cut = cr.perM != null ? cutM * cr.perM * cutK : 0;
+      const pierce = cr.perM != null ? pierces * cr.pierce * cutK : 0;
       if (cr.perM == null && cutM > 0) {
         const col = CUT_GROUPS.find((g) => g.key === mat.cutGroup)?.label.toLowerCase();
         warnings.push(`В прайсе резки нет цены: ${col} ${t} мм — резка не посчитана, задайте цену в «Расценках»`);
       }
-      const lenK = bendLenFactor(s, p.bendLength);
+      // каждый гиб — по своей длине, если длины линий известны и их столько же, сколько гибов; иначе все по bendLength
+      const lens = p.bendLengths?.length === p.bends && p.bends > 0 ? p.bendLengths : null;
+      const lenK = lens ? lens.reduce((a, l) => a + bendLenFactor(s, l), 0) / lens.length : bendLenFactor(s, p.bendLength);
       let bend = p.bends > 0 ? p.bends * perBend * lenK : 0;
       if (p.bends > 0 && s.bendSetup > 0) bend += s.bendSetup / p.qty;
-      if (p.bends > 0 && p.bendLength > 3200) warnings.push('Гиб длиннее 3,2 м — уточните возможности листогиба');
+      if (p.bends > 0 && Math.max(p.bendLength, ...(lens ?? [])) > 3200) warnings.push('Гиб длиннее 3,2 м — уточните возможности листогиба');
       const extras = p.extras.reduce((a, e) => a + (Number(e.perPiece) || 0), 0);
       const total = material + cut + pierce + bend + extras;
       const piece = { material, cut, pierce, bend, extras, total };
@@ -485,7 +494,7 @@ export function computeOrder(positions: Position[], book: PriceBook, s: Settings
         cutM,
         pierces,
         split,
-        rate: { perM: cr.perM, rowT: cr.rowT, group: mat.cutGroup, perBend, lenK },
+        rate: { perM: cr.perM, pierce: cr.pierce, cutK, rowT: cr.rowT, group: mat.cutGroup, perBend, lenK },
         share,
         piece,
         sum,
