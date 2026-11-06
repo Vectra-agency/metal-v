@@ -152,7 +152,7 @@ const a: AiAnalysis = state.analysis;
 const u = a.usage ?? state.usage;
 console.log(
   `\nГотово за ${sec(Date.now() - t0)} (модель — ${sec(a.durationMs)}) · ${a.model}${a.fallback ? ' (резервная модель!)' : ''}` +
-    (u ? ` · токены ${u.promptTokens} + ${u.completionTokens}${u.costRub != null ? ` · ≈ ${u.costRub.toFixed(2)} ₽` : ''}` : ''),
+    (u ? ` · токены ${u.promptTokens} + ${u.completionTokens}${u.costRub != null ? ` · ≈ ${u.costRub.toFixed(2)} ₽` : u.costUsd != null ? ` · ≈ $${u.costUsd.toFixed(4)}` : ''}` : ''),
 );
 if (out) writeFileSync(out, JSON.stringify({ analysis: a, usage: u }, null, 2));
 if (asJson) {

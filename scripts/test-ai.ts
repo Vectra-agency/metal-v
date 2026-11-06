@@ -966,11 +966,12 @@ await test('ошибка модели — понятный текст (LLM_MOCK=
   const { jobId } = await ai.createJob({ context: ctx() }, '10.4.0.1');
   const s = await waitDone(jobId);
   assert.deepEqual(s, { status: 'error', error: 'Сервис ИИ недоступен (HTTP 502, LLM_MOCK=fail)' });
-  const keep = { LLM_BASE_URL: process.env.LLM_BASE_URL, LLM_MODEL: process.env.LLM_MODEL, LLM_API_KEY: process.env.LLM_API_KEY };
+  const keep = { LLM_BASE_URL: process.env.LLM_BASE_URL, LLM_MODEL: process.env.LLM_MODEL, LLM_API_KEY: process.env.LLM_API_KEY, POYO_API_KEY: process.env.POYO_API_KEY };
   delete process.env.LLM_MOCK;
   delete process.env.LLM_BASE_URL;
   delete process.env.LLM_MODEL;
   delete process.env.LLM_API_KEY;
+  delete process.env.POYO_API_KEY; // локальный .env мог включить PoYo одним ключом
   try {
     assert.deepEqual(await ai.aiStatus(), { configured: false, model: null, vision: false });
     await rejectsHttp(() => ai.createJob({ context: ctx() }, '10.4.0.2'), 503, /не настроен/);
@@ -1045,7 +1046,8 @@ let catalog: unknown = { data: [] };
 const gw = createServer(async (req, res) => {
   const chunks: Buffer[] = [];
   for await (const c of req) chunks.push(c as Buffer);
-  if (req.method === 'GET' && req.url?.endsWith('/models')) {
+  // каталог моделей: Hubris — {base}/models, PoYo — {base}/catalog/models?category=chat
+  if (req.method === 'GET' && /\/models(\?|$)/.test(req.url ?? '')) {
     res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(catalog));
     return;
   }
@@ -1060,7 +1062,7 @@ const gwPort = (gw.address() as AddressInfo).port;
 const ok = (content: string, model = 'good/model', extra: Record<string, unknown> = {}): Reply => ({
   body: { model, choices: [{ message: { content }, finish_reason: 'stop' }], usage: { prompt_tokens: 1000, completion_tokens: 100, cost: 35 }, ...extra },
 });
-const keepEnv = Object.fromEntries(['LLM_BASE_URL', 'LLM_MODEL', 'LLM_API_KEY', 'LLM_FALLBACK_MODELS', 'LLM_MOCK', 'LLM_VISION', 'LLM_TIMEOUT_MS', 'LLM_JSON'].map((k) => [k, process.env[k]]));
+const keepEnv = Object.fromEntries(['LLM_BASE_URL', 'LLM_MODEL', 'LLM_API_KEY', 'LLM_FALLBACK_MODELS', 'LLM_MOCK', 'LLM_VISION', 'LLM_TIMEOUT_MS', 'LLM_JSON', 'POYO_API_KEY'].map((k) => [k, process.env[k]]));
 function gateway(env: Record<string, string> = {}) {
   seen.length = 0;
   replies = [];
@@ -1216,6 +1218,81 @@ await test('нет соединения → два бесплатных повт
   const t0 = Date.now();
   await rejectsLlm(() => llm.complete({ messages: msgs }), /Нет связи с сервисом ИИ/);
   assert.ok(Date.now() - t0 >= 7500, 'паузы 2 + 4 + 2 с');
+});
+
+await test('PoYo: один POYO_API_KEY — адрес, основная claude-haiku-5-5 и резерв gemini-3.8-flash; none — без резерва', () => {
+  const c = llm.llmConfig({ POYO_API_KEY: 'pk' });
+  assert.equal(c.provider, 'poyo');
+  assert.equal(c.baseUrl, 'https://api.poyo.ai/v1');
+  assert.equal(c.apiKey, 'pk');
+  assert.equal(c.model, 'claude-haiku-5-5');
+  assert.deepEqual(c.fallbacks, ['gemini-3.8-flash']);
+  assert.equal(c.gateway, false);
+  // docker compose передаёт незаданные переменные пустыми строками
+  assert.deepEqual(llm.llmConfig({ POYO_API_KEY: 'pk', LLM_BASE_URL: '', LLM_MODEL: '', LLM_API_KEY: '', LLM_FALLBACK_MODELS: '' }).fallbacks, ['gemini-3.8-flash']);
+  assert.deepEqual(llm.llmConfig({ POYO_API_KEY: 'pk', LLM_FALLBACK_MODELS: 'none' }).fallbacks, []);
+  assert.equal(llm.llmConfig({ LLM_BASE_URL: 'https://api.poyo.ai/v1', LLM_API_KEY: 'lk', POYO_API_KEY: 'pk' }).apiKey, 'lk');
+  assert.equal(llm.llmConfig({ LLM_BASE_URL: 'https://api.hubris.pw/v1', LLM_MODEL: 'm', LLM_API_KEY: 'k', POYO_API_KEY: 'pk' }).provider, 'gateway');
+  assert.equal(llm.llmConfigured(llm.llmConfig({})), false);
+});
+
+function poyo(env: Record<string, string> = {}) {
+  gateway({ LLM_BASE_URL: `http://127.0.0.1:${gwPort}/poyo.ai/v1`, LLM_MODEL: 'claude-haiku-5-5', LLM_FALLBACK_MODELS: 'gemini-3.8-flash', ...env });
+}
+const claudeOk = (text: string): Reply => ({
+  body: { model: 'claude-haiku-5-5', content: [{ type: 'text', text }], stop_reason: 'end_turn', usage: { input_tokens: 900, cache_creation_input_tokens: 100, output_tokens: 100 } },
+});
+
+await test('PoYo: Claude — Anthropic Messages (system отдельно, изображение base64, строгая схема); стоимость в $ по каталогу', async () => {
+  catalog = { code: 200, data: { items: [{ model_id: 'claude-haiku-5-5', tags: ['anthropic', 'chat'], billing: { input_credits: 16, output_credits: 80 } }], has_more: false } };
+  poyo();
+  replies = [claudeOk('{"summary":"x"}')];
+  const withImg: LlmMessage[] = [
+    { role: 'system', content: 'роль' },
+    { role: 'user', content: [{ type: 'text', text: 'чертёж' }, { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,AAAA' } }] },
+  ];
+  const r = await llm.complete({ messages: withImg });
+  assert.equal(r.content, '{"summary":"x"}');
+  assert.equal(r.model, 'claude-haiku-5-5');
+  assert.equal(r.finishReason, 'stop');
+  assert.equal(seen[0].path, '/poyo.ai/v1/messages');
+  const b = seen[0].body as { system: string; models?: unknown; reasoning?: unknown; messages: { content: unknown[] }[]; output_config: { format: { type: string; schema: { properties: object } } } };
+  assert.equal(b.system, 'роль');
+  assert.equal(b.models, undefined);
+  assert.equal(b.reasoning, undefined);
+  assert.deepEqual(b.messages[0].content[1], { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: 'AAAA' } });
+  assert.equal(b.output_config.format.type, 'json_schema');
+  assert.deepEqual(Object.keys(b.output_config.format.schema.properties).slice(0, 2), ['summary', 'confidence']);
+  assert.equal(r.usage.promptTokens, 1000); // кэш промпта — тоже входные токены
+  assert.equal(r.usage.costRub, null);
+  assert.ok(Math.abs((r.usage.costUsd ?? 0) - ((1000 * 16 + 100 * 80) * 0.005) / 1e6) < 1e-12);
+  assert.equal(await llm.visionEnabled(), true);
+});
+
+await test('PoYo: основная не ответила (5xx дважды, нет модели) → резервная через Chat Completions; ключ — без резерва', async () => {
+  poyo();
+  replies = [{ status: 502, body: { error: { message: 'upstream' } } }, { status: 502, body: { error: { message: 'upstream' } } }, ok('{"summary":"резерв"}', '[量]gemini-3.8-flash')];
+  const r = await llm.complete({ messages: msgs });
+  assert.equal(r.content, '{"summary":"резерв"}');
+  assert.equal(r.model, 'gemini-3.8-flash'); // имя от PoYo («[量]…», «…-tiered») не берём
+  assert.deepEqual(
+    seen.map((s) => s.path),
+    ['/poyo.ai/v1/messages', '/poyo.ai/v1/messages', '/poyo.ai/v1/chat/completions'],
+  );
+  assert.equal(seen[2].body.model, 'gemini-3.8-flash');
+  assert.equal(seen[2].body.models, undefined);
+  assert.equal(llm.isFallbackModel(r.model), true);
+  poyo();
+  replies = [{ status: 404, body: { error: { message: 'Model not found: claude-haiku-5-5', type: 'invalid_request_error', code: 'model_not_found' } } }, ok('{}', 'gemini-3.8-flash')];
+  assert.equal((await llm.complete({ messages: msgs })).model, 'gemini-3.8-flash');
+  poyo();
+  replies = [{ status: 401, body: { code: 401, error: { message: 'Invalid API key', type: 'authentication_error' } } }];
+  await rejectsLlm(() => llm.complete({ messages: msgs }), /Ключ ИИ отклонён/);
+  assert.equal(seen.length, 1); // резервная модель с тем же ключом не поможет
+  poyo({ LLM_FALLBACK_MODELS: 'none' });
+  replies = [{ status: 502, body: {} }, { status: 502, body: {} }];
+  await rejectsLlm(() => llm.complete({ messages: msgs }), /недоступен \(HTTP 502\)/);
+  assert.equal(seen.length, 2);
 });
 
 gw.close();

@@ -14,6 +14,32 @@ chown 1000:1000 data 2>/dev/null || true
 
 prev=$(docker image inspect "$IMAGE" --format '{{.Id}}' 2>/dev/null || true)
 
+# Базовые образы из Dockerfile. Docker Hub ограничивает анонимные скачивания по IP (429 Too Many
+# Requests), а сервер общий с другими проектами. Поэтому: образ уже есть локально — сборка берёт его
+# и в реестр не ходит; нет — Docker Hub с повтором, потом зеркала, скачанное тегается исходным именем.
+MIRRORS="mirror.gcr.io dockerhub.timeweb.cloud"
+ensure_image() {
+  local img="$1" ref="$1" m
+  docker image inspect "$img" >/dev/null 2>&1 && return 0
+  for wait in 0 15; do
+    sleep "$wait"
+    docker pull -q "$img" >/dev/null && return 0
+  done
+  [[ "$ref" == */* ]] || ref="library/$ref"
+  for m in $MIRRORS; do
+    if docker pull -q "$m/$ref" >/dev/null; then
+      docker tag "$m/$ref" "$img"
+      echo "Базовый образ $img взят с зеркала $m (Docker Hub не отдал)"
+      return 0
+    fi
+  done
+  echo "Не удалось скачать базовый образ $img ни с Docker Hub, ни с зеркал ($MIRRORS)" >&2
+  return 1
+}
+for img in $(awk 'toupper($1) == "FROM" && $2 !~ /\$/ { print $2 }' Dockerfile | sort -u); do
+  ensure_image "$img"
+done
+
 docker compose build
 docker compose up -d --remove-orphans
 

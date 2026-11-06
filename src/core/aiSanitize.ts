@@ -547,6 +547,7 @@ function usageOf(u: AiUsage): AiUsage {
     promptTokens: tokens(u.promptTokens),
     completionTokens: tokens(u.completionTokens),
     costRub: typeof u.costRub === 'number' && Number.isFinite(u.costRub) && u.costRub >= 0 ? round(u.costRub, 4) : null,
+    ...(typeof u.costUsd === 'number' && Number.isFinite(u.costUsd) && u.costUsd >= 0 ? { costUsd: round(u.costUsd, 6) } : {}),
   };
 }
 

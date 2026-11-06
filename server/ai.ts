@@ -705,6 +705,7 @@ const addUsage = (a: LlmUsage, b: LlmUsage): LlmUsage => ({
   promptTokens: a.promptTokens + b.promptTokens,
   completionTokens: a.completionTokens + b.completionTokens,
   costRub: a.costRub != null && b.costRub != null ? a.costRub + b.costRub : (a.costRub ?? b.costRub),
+  ...(a.costUsd != null || b.costUsd != null ? { costUsd: (a.costUsd ?? 0) + (b.costUsd ?? 0) } : {}),
 });
 
 /** Заглушка LLM_MOCK (разработка): количество +1 у первой позиции, совет исключить последнюю (если позиций
@@ -802,7 +803,7 @@ function logJob(job: Job) {
     return;
   }
   const u = job.usage;
-  const cost = u.costRub != null ? ` ≈ ${u.costRub.toFixed(2)} ₽` : '';
+  const cost = u.costRub != null ? ` ≈ ${u.costRub.toFixed(2)} ₽` : u.costUsd != null ? ` ≈ $${u.costUsd.toFixed(4)}` : '';
   const model = `${job.model}${job.analysis.fallback ? ' (резервная модель)' : ''}`;
   console.log(`${head} · ${model} · токены ${u.promptTokens}+${u.completionTokens}${cost} · с замечаниями ${job.analysis.positions.length}${job.repaired ? ' · JSON исправлен повтором' : ''}`);
 }
@@ -831,8 +832,8 @@ async function run(job: Job): Promise<void> {
   job.startedAt = Date.now();
   const cfg = llmConfig();
   job.model = cfg.mock ? 'mock' : cfg.model;
-  // весь анализ (повторы, исправление JSON) — не дольше двух тайм-аутов запроса
-  const deadlineMs = cfg.timeoutMs * 2 + 15_000;
+  // весь анализ (повторы, резервные модели, исправление JSON): по тайм-ауту на каждую модель цепочки и ещё один
+  const deadlineMs = cfg.timeoutMs * (2 + (cfg.gateway ? 0 : cfg.fallbacks.length)) + 15_000;
   const deadline = AbortSignal.timeout(deadlineMs);
   const signal = AbortSignal.any([job.ctrl.signal, deadline]);
   try {

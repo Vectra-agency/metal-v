@@ -192,11 +192,12 @@ export interface AiSuggestion {
   reason: string; // почему: дословная цитата в «ёлочках» из чертежа/заявки и расчёт по ставке
 }
 
-/** Токены и стоимость одного анализа (Hubris отдаёт стоимость в usage.cost) */
+/** Токены и стоимость одного анализа: Hubris считает в рублях, PoYo — в долларах (по ценам каталога моделей) */
 export interface AiUsage {
   promptTokens: number;
   completionTokens: number;
   costRub: number | null;
+  costUsd?: number | null;
 }
 
 export interface AiPositionReview {

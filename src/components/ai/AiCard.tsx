@@ -138,6 +138,7 @@ const sameDay = (iso: string) => new Date(iso).toDateString() === new Date().toD
 
 function Meta({ a }: { a: AiAnalysis }): ReactElement {
   const cost = a.usage?.costRub;
+  const usd = a.usage?.costUsd;
   const usage = a.usage ? ` · токенов: ${n0(a.usage.promptTokens)} + ${n0(a.usage.completionTokens)}` : '';
   return (
     <Tooltip>
@@ -145,7 +146,7 @@ function Meta({ a }: { a: AiAnalysis }): ReactElement {
         <span tabIndex={0} className="focus-ring cursor-default rounded-sm text-xs text-muted-foreground tabular-nums">
           {shortModel(a.model)} · {Math.max(1, Math.round(a.durationMs / 1000))}
           {NBSP}с · {sameDay(a.createdAt) ? hhmm(a.createdAt) : dateShort(a.createdAt)}
-          {cost != null ? ` · ${n2(cost)}${NBSP}₽` : ''}
+          {cost != null ? ` · ${n2(cost)}${NBSP}₽` : usd != null ? ` · $${usd < 0.01 ? usd.toFixed(4) : usd.toFixed(3)}` : ''}
         </span>
       </TooltipTrigger>
       <TooltipContent>

@@ -17,6 +17,7 @@ services:
     # не трогает; образец — .env.example). Пусто — анализ ИИ выключен, расчёт работает как раньше.
     # После правки .env: docker compose up -d (контейнер пересоздаётся с новыми переменными).
     environment:
+      POYO_API_KEY: ${POYO_API_KEY:-}
       LLM_BASE_URL: ${LLM_BASE_URL:-}
       LLM_MODEL: ${LLM_MODEL:-}
       LLM_API_KEY: ${LLM_API_KEY:-}

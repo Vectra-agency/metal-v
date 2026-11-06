@@ -30,11 +30,12 @@ npm run serve      # сборка + сервер → http://localhost:8787
 
 ### ИИ-анализ
 
-ИИ подключается на сервере через OpenAI-совместимый шлюз (по умолчанию Hubris, модель Claude Haiku 5.5).
-Скопируйте `.env.example` в `.env` рядом с `package.json` и впишите `LLM_API_KEY` — `npm run dev` и
-`npm start` прочитают файл сами. Проверка: `curl localhost:8787/api/ai/status` →
-`{"configured":true,…}`. Ключи, лимиты, стоимость анализа (≈ 0,3–2 ₽, заказ из 7 позиций с чертежами —
-≈ 0,6 ₽) и что делать при ошибках — в [DEPLOY.md, раздел «ИИ-анализ»](DEPLOY.md#ии-анализ).
+ИИ подключается на сервере через [PoYo AI](https://poyo.ai), как в video-creator: основная модель
+Claude Haiku 5.5, резервная — Gemini 3.8 Flash (отвечает, если основная недоступна). Скопируйте
+`.env.example` в `.env` рядом с `package.json` и впишите `POYO_API_KEY` — `npm run dev` и `npm start`
+прочитают файл сами. Проверка: `curl localhost:8787/api/ai/status` → `{"configured":true,…}`. Модели,
+лимиты, стоимость анализа (≈ $0,004 за заказ из 7 позиций) и что делать при ошибках — в
+[DEPLOY.md, раздел «ИИ-анализ»](DEPLOY.md#ии-анализ).
 
 Без ключа калькулятор работает как раньше: шаг «Анализ ИИ» пропускается, вместо него в списке
 «Требует внимания» — подсказки по тексту чертежей и «Количество не сверено с заявкой».
@@ -315,7 +316,7 @@ src/components/common/   общие элементы: числа, деньги, 
 src/components/ui/       компоненты shadcn/ui (Tailwind CSS v4), тема — src/index.css
 server/mc.ts             парсер mc.ru
 server/api.ts            /api/prices, /api/prices/refresh, /api/ai/…
-server/ai.ts, llm.ts     очередь анализов ИИ, запросы к шлюзу модели; промпт — server/prompts/analyze.md
+server/ai.ts, llm.ts     очередь анализов ИИ, запросы к модели (PoYo, резервная модель); промпт — server/prompts/analyze.md
 scripts/                 analyze / analyze-pdf (разбор по папке), calibrate (сверка), update-prices,
                          test-ai / test-client-ai / test-quote (проверки: node scripts/test-….ts)
 ```
