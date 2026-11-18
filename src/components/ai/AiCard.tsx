@@ -34,7 +34,7 @@ import {
   Sparkles,
   TriangleAlert,
 } from '@/components/common/icons.ts';
-import { setAiCardOpen, setFilter, setQuoteQuestions, setTab } from '@/store/actions.ts';
+import { openSheet, setAiCardOpen, setFilter, setQuoteQuestions, setTab } from '@/store/actions.ts';
 import { acceptAllPending, revertAllAi, startTriage } from '@/store/aiActions.ts';
 import { useDerived } from '@/store/derived.tsx';
 import { cancelAnalysis, runAnalysis } from '@/store/pipelineActions.ts';
@@ -302,14 +302,40 @@ function Running({ m }: { m: Model }): ReactElement | null {
   const run = m.ai.run;
   const now = useNow(!!run);
   if (!run) return null;
+  const o = m.order;
+  // заявки нет: вставленная во время анализа перезапускает его один раз (setRequest)
+  const noRequest = !(o.request ?? '').trim() && !(o.documents ?? []).length && !(o.requestLines ?? []).length;
+  const qtyBanner = m.d.positions.some((p) => !p.disabled && p.guessed.qty); // над итогом уже есть «Вставить заявку»
   return (
-    <div role="status" className="flex flex-wrap items-center gap-2 text-sm">
-      <Spinner className="text-ai" />
-      <span>{run.job || m.analysis ? jobText(run, now, m.ai.server?.model ?? null) : 'Идёт анализ ИИ…'}</span>
-      <span className="text-xs text-muted-foreground tabular-nums">{elapsed(now - run.startedAt)}</span>
-      <Button variant="ghost" size="sm" onClick={cancelAnalysis}>
-        Отменить анализ
-      </Button>
+    <div className="flex flex-col gap-2">
+      <div role="status" className="flex flex-wrap items-center gap-2 text-sm">
+        <Spinner className="text-ai" />
+        <span>{run.job || m.analysis ? jobText(run, now, m.ai.server?.model ?? null) : 'Идёт анализ ИИ…'}</span>
+        <span className="text-xs text-muted-foreground tabular-nums">{elapsed(now - run.startedAt)}</span>
+        <Button variant="ghost" size="sm" onClick={cancelAnalysis}>
+          Отменить анализ
+        </Button>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        {m.analysis
+          ? 'Пока идёт анализ, в расчёте — прежние решения ИИ.'
+          : 'Сейчас на экране предварительный расчёт по файлам. Когда анализ закончится, его правки применятся сами, если вы не меняли заказ; иначе — по кнопке.'}
+      </p>
+      {run.restarted ? (
+        <p className="text-xs text-muted-foreground">Заявка добавлена — анализ перезапущен с ней.</p>
+      ) : noRequest && qtyBanner ? (
+        <p className="text-xs text-muted-foreground">Вставленная заявка перезапустит анализ — ИИ сверит с ней количество.</p>
+      ) : (
+        noRequest && (
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md border border-warn/40 bg-warn-soft px-2.5 py-1.5 text-sm">
+            <span>Заявки нет — ИИ не с чем сверить количество.</span>
+            <Button variant="link" size="sm" className="h-auto px-0" onClick={() => openSheet({ kind: 'request', section: 'request' })}>
+              Вставить заявку
+            </Button>
+            <span className="text-xs text-muted-foreground">анализ начнётся заново с ней</span>
+          </div>
+        )
+      )}
     </div>
   );
 }

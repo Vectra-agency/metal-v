@@ -388,7 +388,7 @@ export interface AiStageResult {
 
 /**
  * Анализ ИИ заказа. Контекст строится по базовым позициям; предложения по умолчанию применяются
- * по политике defaultAccepted. signal — «Показать расчёт без ИИ»: этап становится «пропущен».
+ * по политике defaultAccepted. signal — отмена: этап становится «пропущен».
  */
 export async function aiStage(input: {
   order: Order;
@@ -424,7 +424,7 @@ export async function aiStage(input: {
     return done('done', `${analysis.model} · ${sec} с${n ? ` · требуют внимания: ${n}` : ''}`, { ai, ctx, images: refs.refs.length });
   } catch (e) {
     const err = e instanceof AiError ? e : new AiError(`Ошибка ИИ-анализа: ${(e as Error).message}`, 'failed');
-    if (err.code === 'aborted') return done('skipped', 'Пропущен — показан расчёт без ИИ');
+    if (err.code === 'aborted') return done('skipped', 'Анализ ИИ остановлен');
     return done('error', err.message, { error: err.message });
   }
 }
@@ -465,7 +465,7 @@ export interface QuoteCallbacks {
   onBook?: (b: PriceBook) => void; // цены обновились — можно сразу показать
   onJob?: (s: AiJobState) => void; // ход задачи ИИ: очередь, время, модель
   signal?: AbortSignal; // отмена всего
-  aiSignal?: AbortSignal; // «Показать расчёт без ИИ» — только пропуск анализа
+  aiSignal?: AbortSignal; // отмена только анализа (расчёт продолжается)
   aiStatus?: AiServerStatus;
   images?: boolean;
 }

@@ -33,7 +33,7 @@ export interface AiRun {
   restarted: boolean; // единственный перезапуск из-за вставленной заявки уже был
 }
 
-/** Поздний результат: после «Показать расчёт без ИИ» или правок во время анализа */
+/** Поздний результат: заказ правили во время анализа или КП уже ушло клиенту — ждёт решения */
 export interface PendingAi {
   analysis: AiAnalysis;
   contextHash: string;
@@ -62,8 +62,8 @@ export interface PipelineSlice {
   stages: Stages; // src/pipeline.ts (initialStages/updateStage)
   parse: ParseProgress | null;
   busy: boolean; // идёт какой-то этап
-  processing: boolean; // экран обработки (первый запуск на пустом заказе)
-  detached: boolean; // во время этого запуска нажато «Показать расчёт без ИИ»
+  processing: boolean; // экран обработки (первый запуск на пустом заказе: файлы и цены, ИИ — уже в фоне)
+  detached: boolean; // во время анализа КП ушло клиенту (копирование, CSV, печать): итог ИИ сам не применяется
   addedIds: string[]; // позиции, добавленные последним повторным разбором («новая»)
   emptyResult: boolean; // последний разбор не нашёл чертежей
   runId: number;

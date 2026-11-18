@@ -2,6 +2,7 @@
 // и внутренняя строка «Только для вас» — в КП она не попадает.
 import type { ReactElement, ReactNode } from 'react';
 import { Button } from '@/components/ui/button.tsx';
+import { Spinner } from '@/components/ui/spinner.tsx';
 import { ChevronRight, CircleCheck, Info, Lock, OctagonAlert, TriangleAlert } from '@/components/common/icons.ts';
 import { cn } from '@/lib/utils.ts';
 import { dateDay, pct1, plural, rub0 } from '@/format.ts';
@@ -59,6 +60,7 @@ export function BeforeSend(): ReactElement {
   const hasDocs = useStore((s) => !!s.order.documents?.length || !!s.order.requestLines?.length);
   const ctx = useStore((s) => s.ai.lastContext);
   const canRun = useStore((s) => !!s.ai.server?.configured && !s.ai.run);
+  const aiRunning = useStore((s) => !!s.ai.run);
   const book = useStore((s) => s.prices.book);
   const withQuestions = useStore((s) => s.ui.quoteQuestions);
   const q = d.quote;
@@ -143,6 +145,11 @@ export function BeforeSend(): ReactElement {
         Перед отправкой
       </h3>
       <ul className="space-y-1.5 text-sm">
+        {aiRunning && (
+          <Row icon={<Spinner aria-hidden role="presentation" className="text-ai" />}>
+            Идёт анализ ИИ — сумма предварительная. Если отправить сейчас, его правки не применятся сами
+          </Row>
+        )}
         {qty}
 
         {problems.map((i) => (
@@ -184,7 +191,7 @@ export function BeforeSend(): ReactElement {
           </Row>
         )}
 
-        {open.length === 0 && qtyOk && pending === 0 && (
+        {open.length === 0 && qtyOk && pending === 0 && !aiRunning && (
           <Row icon={<CircleCheck className="text-ok" />} className="font-medium">
             Всё проверено — можно отправлять клиенту
           </Row>

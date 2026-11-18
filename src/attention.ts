@@ -116,6 +116,7 @@ export interface AttentionInput {
   priceIssue: PriceIssue | null;
   aiContext: AiContext | null;
   outdated: boolean;
+  aiRunning?: boolean; // анализ идёт в фоне — «Количество не сверено — ИИ не запускался» не к месту
 }
 
 // ---------- подписи (как в components/common/aiFormat.ts) ----------
@@ -777,7 +778,7 @@ export function buildAttention(i: AttentionInput): Attention {
     });
   }
   const enabled = order.positions.filter((p) => !p.disabled);
-  if (!ai && enabled.length) {
+  if (!ai && enabled.length && !i.aiRunning) {
     add({
       id: `qtyunverified:${enabled.length}`,
       severity: 'check',

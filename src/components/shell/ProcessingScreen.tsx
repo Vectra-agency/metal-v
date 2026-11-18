@@ -1,18 +1,16 @@
-// Экран обработки первого запуска (ui-spec §2.5): 4 этапа с подробностями и временем, предварительная цена после
-// цен mc.ru, «Показать расчёт без ИИ» (анализ продолжается в фоне), «Отменить анализ», поле заявки, если её нет.
-import { useEffect, useState, type ReactElement } from 'react';
-import { cn } from '@/lib/utils.ts';
+// Экран обработки первого запуска (ui-spec §2.5): чтение файлов и цены mc.ru с подробностями и временем, позиции,
+// предварительная цена. Сразу после цен открывается расчёт, анализ ИИ идёт в фоне (его ход и заявка — в карточке ИИ);
+// «Показать расчёт сейчас» — не дожидаясь обновления цен.
+import type { ReactElement } from 'react';
 import { Button } from '@/components/ui/button.tsx';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card.tsx';
-import { Textarea } from '@/components/ui/textarea.tsx';
 import { getMaterial } from '@/core/materials.ts';
 import { n0, n1, NBSP, plural } from '@/format.ts';
 import type { OrderPosition } from '@/order.ts';
 import type { StageStatus } from '@/pipeline.ts';
 import { useDerived } from '@/store/derived.tsx';
-import { cancelAnalysis, setRequest, showResultNow } from '@/store/pipelineActions.ts';
+import { showResultNow } from '@/store/pipelineActions.ts';
 import { useStore } from '@/store/store.ts';
-import { RequestCounter } from './EmptyScreen.tsx';
 import { StageList } from './StageList.tsx';
 
 const SHOWN = 6;
@@ -81,59 +79,23 @@ function Preliminary(): ReactElement | null {
   );
 }
 
-/** Заявки нет — поле прямо здесь; вставка во время анализа перезапускает его один раз */
-function NoRequest(): ReactElement | null {
-  const configured = useStore((s) => !!s.ai.server?.configured);
-  const filesDone = useStore((s) => final(s.pipeline.stages.files.status));
-  const none = useStore((s) => !(s.order.request ?? '').trim() && !(s.order.documents ?? []).length && !(s.order.requestLines ?? []).length);
-  const request = useStore((s) => s.order.request ?? '');
-  const run = useStore((s) => s.ai.run);
-  // однажды показанное поле не исчезает, когда в нём появился текст
-  const [sticky, setSticky] = useState(false);
-  const want = filesDone && none;
-  const pastedDuringRun = !!run && !run.requestAtStart.trim() && !!request.trim();
-  useEffect(() => {
-    if (want || pastedDuringRun) setSticky(true);
-  }, [want, pastedDuringRun]);
-  if (!configured || !(want || sticky || pastedDuringRun)) return null;
-  const hint = run?.restarted ? 'Заявка добавлена — анализ перезапущен' : run && run.requestAtStart.trim() ? null : 'Анализ начнётся заново с заявкой';
-  const filled = !!request.trim();
-  return (
-    <div className={cn('flex flex-col gap-2 rounded-lg border p-3', filled ? 'bg-muted/40' : 'border-warn/40 bg-warn-soft')}>
-      <label htmlFor="request-input" className="font-medium">
-        {filled ? 'Заявка клиента' : 'Заявки нет — вставьте текст письма, ИИ сверит количество'}
-      </label>
-      <Textarea
-        id="request-input"
-        value={request}
-        onChange={(e) => setRequest(e.target.value)}
-        placeholder="Вставьте текст письма: «Прошу счёт… БВС-305Х300.000 — 3 шт»"
-        className="max-h-[40dvh] min-h-24 resize-y overflow-y-auto bg-background"
-        spellCheck={false}
-      />
-      <div className="flex items-start justify-between gap-3 text-xs text-muted-foreground">
-        <span aria-live="polite">{hint}</span>
-        <RequestCounter len={request.length} />
-      </div>
-    </div>
-  );
-}
-
+/** Цены ещё обновляются — можно не ждать; про ИИ — что он не задержит расчёт */
 function Actions(): ReactElement | null {
-  const pricesStarted = useStore((s) => s.pipeline.stages.prices.status !== 'pending');
-  const aiRunning = useStore((s) => s.pipeline.stages.ai.status === 'running');
-  if (!pricesStarted) return null;
+  const filesDone = useStore((s) => final(s.pipeline.stages.files.status));
+  const pricesRunning = useStore((s) => s.pipeline.stages.prices.status === 'running');
+  const ai = useStore((s) => !!s.ai.server?.configured);
+  if (!filesDone) return null;
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t pt-4">
-      <Button variant="outline" onClick={showResultNow}>
-        Показать расчёт без ИИ
-      </Button>
-      <span className="text-xs text-muted-foreground">анализ продолжится в фоне</span>
-      {aiRunning && (
-        <Button variant="ghost" className="ml-auto" onClick={cancelAnalysis}>
-          Отменить анализ
-        </Button>
+      {pricesRunning && (
+        <>
+          <Button variant="outline" onClick={showResultNow}>
+            Показать расчёт сейчас
+          </Button>
+          <span className="text-xs text-muted-foreground">цены mc.ru обновятся в фоне</span>
+        </>
       )}
+      {ai && <span className="text-xs text-muted-foreground sm:ml-auto">Анализ ИИ пойдёт в фоне — расчёт откроется сразу после цен</span>}
     </div>
   );
 }
@@ -148,7 +110,6 @@ export function ProcessingScreen(): ReactElement {
       <CardContent className="flex flex-col gap-4">
         <StageList />
         <Preliminary />
-        <NoRequest />
         <Actions />
       </CardContent>
     </Card>

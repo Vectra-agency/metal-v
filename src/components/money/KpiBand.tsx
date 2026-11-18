@@ -5,6 +5,7 @@
 import { useState, type ReactElement, type ReactNode } from 'react';
 import { Badge } from '@/components/ui/badge.tsx';
 import { Skeleton } from '@/components/ui/skeleton.tsx';
+import { Spinner } from '@/components/ui/spinner.tsx';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx';
 import { CATS, CatDot, CostBar, type CatKey } from '@/components/common/CostBar.tsx';
 import { NumInput } from '@/components/common/NumInput.tsx';
@@ -91,6 +92,7 @@ export function KpiBand(): ReactElement {
   const loaded = useStore((s) => s.prices.loaded);
   const delivery = useStore((s) => s.order.delivery);
   const hasAi = useStore((s) => !!s.order.ai);
+  const aiRunning = useStore((s) => !!s.ai.run); // анализ идёт в фоне — сумма предварительная
   const q = d.quote;
   const T = d.res.totals;
   const m = q.markupPct;
@@ -174,9 +176,16 @@ export function KpiBand(): ReactElement {
               {NBSP}% — {rub2(q.vat)}
             </Sub>
             <Sub>без НДС {rub2(q.total - q.vat)}</Sub>
-            {(!hasAi || q.unpriced > 0) && (
+            {(!hasAi || aiRunning || q.unpriced > 0) && (
               <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
-                {!hasAi && <Badge variant="outline">без проверки ИИ</Badge>}
+                {aiRunning ? (
+                  <Badge variant="outline" title="Идёт анализ ИИ: его правки могут изменить сумму">
+                    <Spinner aria-hidden role="presentation" className="text-ai" />
+                    предварительно · идёт анализ ИИ
+                  </Badge>
+                ) : (
+                  !hasAi && <Badge variant="outline">без проверки ИИ</Badge>
+                )}
                 {q.unpriced > 0 && (
                   <button
                     type="button"

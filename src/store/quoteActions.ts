@@ -1,12 +1,14 @@
 // Отправка клиенту: копирование, CSV, печать (ui-spec §4.5, §7).
 // Пока открыты замечания уровня «ошибка», копирование, CSV и печать для клиента сначала спрашивают (CopyGuardDialog);
-// { force: true } — «Всё равно скопировать / напечатать».
+// { force: true } — «Всё равно скопировать / напечатать». Отправлено во время анализа ИИ — его итог ждёт решения
+// (holdAiResult), а не меняет сумму, которую клиент уже видел.
 import { flushSync } from 'react-dom';
 import { toast } from 'sonner';
 import { downloadText, exportCsv } from '../exportCsv.ts';
 import { plural } from '../format.ts';
 import { clientMoney, quoteCsv, quoteText, quoteTsv, safeFileName } from '../quote.ts';
 import { openDialog, setTab } from './actions.ts';
+import { holdAiResult } from './pipelineActions.ts';
 import { getDerived } from './derived.tsx';
 import { getState, patchUi } from './store.ts';
 import type { AppState, GuardAction } from './types.ts';
@@ -67,6 +69,7 @@ async function writeClipboard(text: string): Promise<boolean> {
 }
 
 const positionsWord = (n: number) => `${n} ${plural(n, 'позиция', 'позиции', 'позиций')}`;
+const HELD = 'Анализ ИИ ещё идёт — его правки не изменят сумму сами, применить их можно будет кнопкой';
 
 /** «Скопировать для клиента» (текст), «таблицей» (TSV) или «с вопросами клиенту» */
 export async function copyForClient(kind: CopyKind = 'text', opts: { force?: boolean } = {}): Promise<void> {
@@ -76,8 +79,10 @@ export async function copyForClient(kind: CopyKind = 'text', opts: { force?: boo
   const q = getDerived().quote;
   const withQuestions = kind === 'questions' || (kind === 'text' && s.ui.quoteQuestions);
   const text = kind === 'table' ? quoteTsv(q) : quoteText(q, withQuestions ? { questions: clientQuestions(s) } : {});
-  if (await writeClipboard(text)) toast.success(`Скопировано для клиента: ${positionsWord(q.lines.length)}, итого ${clientMoney(q, q.total)}`);
-  else
+  if (await writeClipboard(text)) {
+    const held = kind !== 'questions' && holdAiResult();
+    toast.success(`Скопировано для клиента: ${positionsWord(q.lines.length)}, итого ${clientMoney(q, q.total)}`, held ? { description: HELD } : undefined);
+  } else
     toast.error('Не удалось скопировать — выделите текст на вкладке «Для клиента»', {
       action: { label: 'Открыть', onClick: () => setTab('quote') },
     });
@@ -89,6 +94,7 @@ export function downloadClientCsv(opts: { force?: boolean } = {}): void {
   if (guarded('csv', opts.force)) return;
   const q = getDerived().quote;
   downloadText(`КП ${safeFileName(q.title) || 'расчёт'}.csv`, quoteCsv(q));
+  if (holdAiResult()) toast(HELD);
 }
 
 /** «Excel: внутренний расчёт» — позиции с принятыми предложениями ИИ, точные цены */
@@ -128,6 +134,7 @@ export function printClient(opts: { force?: boolean } = {}): void {
   if (guarded('print', opts.force)) return;
   if (getState().ui.printMode !== 'client') flushSync(() => patchUi({ printMode: 'client' }));
   setPrintPage('client');
+  holdAiResult();
   window.print();
 }
 

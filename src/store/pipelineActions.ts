@@ -1,8 +1,9 @@
 // Конвейер в интерфейсе: файлы → цены mc.ru → анализ ИИ → расчёт (ui-spec §4.5–4.6).
 // Разборы файлов идут по очереди (parseChain). Запуск этапов «цены → ИИ» один: новый запуск отменяет прежний
 // (seq + AbortController, задача ИИ на сервере удаляется). Запуск отменяется, только если разбор принёс новое.
-// «Показать расчёт без ИИ» задачу не отменяет: поздний результат ждёт решения (ai.pending), числа не меняются.
-// «Отменить анализ» — abort → analyzeOrder сам шлёт DELETE /api/ai/jobs/<id>.
+// ИИ работает в фоне: экран обработки ждёт только файлы и цены, дальше — предварительный расчёт. Готовый анализ
+// применяется сам, если заказ за это время не меняли и КП не уходило клиенту (pipeline.detached); иначе ждёт решения
+// (ai.pending) и числа не меняются. «Отменить анализ» — abort → analyzeOrder сам шлёт DELETE /api/ai/jobs/<id>.
 import { toast } from 'sonner';
 import { aiStateFrom, appliedCount, isApplicable, pendingOffers } from '../ai/apply.ts';
 import { aiStatus } from '../ai/api.ts';
@@ -298,8 +299,20 @@ async function runStages(): Promise<void> {
   patchPipeline({ runId: id, busy: true });
   await pricesStep(id);
   if (id !== seq) return;
+  await reveal(id);
+  if (id !== seq) return;
   await aiStep(id);
-  if (id === seq) await finish(id);
+  if (id === seq) finish();
+}
+
+/** Предварительный расчёт — сразу после цен: экран обработки уступает результату, анализ ИИ идёт в фоне */
+async function reveal(id: number): Promise<void> {
+  const d = getDerived();
+  setStage('calc', 'done', calcDetail(d.res, d.quote));
+  if (!getState().pipeline.processing) return;
+  const left = processingSince + MIN_PROCESSING_MS - Date.now(); // экран обработки не мелькает
+  if (left > 0) await sleep(left);
+  if (id === seq) patchPipeline({ processing: false });
 }
 
 /** 1. цены mc.ru: только устаревшие пары заказа; после «я не робот» mc.ru 15 минут не трогаем */
@@ -339,18 +352,10 @@ async function pricesStep(id: number): Promise<void> {
   setStage('prices', pr.status, pr.detail);
 }
 
-/** 3. расчёт (сам расчёт — в derived; здесь итог для списка этапов) и выход с экрана обработки */
-async function finish(id: number): Promise<void> {
-  const current = () => id === seq;
-  setStage('calc', 'running', 'Считаю…');
+/** 3. расчёт с итогом анализа (сам расчёт — в derived; здесь итог для списка этапов) */
+function finish(): void {
   const d = getDerived();
   setStage('calc', 'done', calcDetail(d.res, d.quote));
-  const st = getState().pipeline;
-  if (st.processing && (st.stages.prices.status === 'skipped' || st.stages.ai.status === 'skipped')) {
-    const left = processingSince + MIN_PROCESSING_MS - Date.now();
-    if (left > 0) await sleep(left);
-    if (!current()) return;
-  }
   activeRun = 0;
   patchPipeline({ busy: false, processing: false });
   if (getState().ai.run) patchAi({ run: null });
@@ -445,7 +450,7 @@ function revealAiCard(): void {
   requestAnimationFrame(() => document.getElementById('ai-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
 }
 
-/** Результат ИИ пришёл. Заказ не менялся и расчёт не отвязан — применить с переносом решений; иначе — ждёт решения */
+/** Результат ИИ пришёл. Заказ не менялся и КП не уходило клиенту — применить с переносом решений; иначе — ждёт решения */
 function receive(r: AiStageResult): void {
   const ai = r.ai!;
   const ctx = r.ctx ?? null;
@@ -464,11 +469,15 @@ function receive(r: AiStageResult): void {
   const prev = s.order.ai;
   setOrder((o) => ({ ...o, ai: aiStateFrom(ai.analysis, o.positions, startHash, { prev }), aiScope: scope }));
   patchAi({ lastContext: ctx, pending: null });
-  if (prev) {
+  if (prev || !getState().pipeline.processing) {
+    // на экране уже был предварительный расчёт: что изменилось
     const o = getState().order;
     const n = appliedCount(o.ai, o.positions);
     const m = pendingOffers(o.ai, o.positions).length;
-    toast(`Новый анализ ИИ: применено ${n} (${signedRub(getDerived().quote.total - before)}), ждут решения ${m}`);
+    const delta = getDerived().quote.total - before;
+    const what = [n ? `применено ${n}${Math.abs(delta) >= 0.005 ? ` (${signedRub(delta)})` : ''}` : '', m ? `ждут решения ${m}` : ''].filter(Boolean).join(', ');
+    const text = prev ? `Новый анализ ИИ: ${what || 'изменений нет'}` : `${readyText(ai.analysis)}${what ? ` · ${what}` : ''}`;
+    toast(text, { action: { label: 'Показать', onClick: revealAiCard } });
   }
   ensureExtraPairs();
 }
@@ -511,9 +520,17 @@ export function cancelAnalysis(): void {
   aiCtl?.abort();
 }
 
-/** «Показать расчёт без ИИ»: результат сразу, анализ продолжается в фоне (его итог — ai.pending) */
+/** «Показать расчёт сейчас» (пока обновляются цены): результат сразу, цены и анализ ИИ доходят в фоне */
 export function showResultNow(): void {
-  patchPipeline({ processing: false, detached: true });
+  patchPipeline({ processing: false });
+}
+
+/** КП ушло клиенту (скопировано, CSV, печать), пока идёт анализ ИИ: его итог не меняет отправленные числа сам */
+export function holdAiResult(): boolean {
+  const s = getState();
+  if (!s.ai.run) return false;
+  if (!s.pipeline.detached) patchPipeline({ detached: true });
+  return true;
 }
 
 /** Заявка клиента. Вставили во время анализа, начатого без заявки, — один перезапуск анализа (после паузы ввода) */

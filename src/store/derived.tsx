@@ -23,6 +23,7 @@ export interface CalcInput {
   aiContext: AiContext | null;
   maxAgeHours: number;
   loaded?: boolean; // справочник цен загружен (false — ещё EMPTY_BOOK: «устарел» не показываем)
+  aiRunning?: boolean; // идёт анализ ИИ (в фоне): «ИИ не запускался» не показываем
 }
 
 export interface Derived {
@@ -130,9 +131,10 @@ const attentionMemo = memo2(
     aiContext: AiContext | null,
     outdated: boolean,
     _maxAgeHours: number,
+    aiRunning: boolean,
   ) => {
     derivedStats.attention++;
-    return buildAttention({ order, positions, res, baseRes, book, settings, live, priceIssue, aiContext, outdated });
+    return buildAttention({ order, positions, res, baseRes, book, settings, live, priceIssue, aiContext, outdated, aiRunning });
   },
 );
 
@@ -155,7 +157,7 @@ function derive(i: CalcInput): Derived {
   const baseQuote = positions === order.positions ? quote : baseQuoteMemo(order, order.positions, baseCalc, settings, qs, book, today);
   // пока справочник цен не загружен (EMPTY_BOOK), хэш контекста не тот — «устарел» не показываем
   const outdated = i.loaded === false ? false : outdatedMemo(order, book, settings, baseRes);
-  const attention = attentionMemo(order, positions, res, baseRes, book, settings, i.live, i.priceIssue, i.aiContext, outdated, i.maxAgeHours);
+  const attention = attentionMemo(order, positions, res, baseRes, book, settings, i.live, i.priceIssue, i.aiContext, outdated, i.maxAgeHours, !!i.aiRunning);
   return {
     positions,
     byId: byIdMemo(positions),
@@ -186,6 +188,7 @@ const calcInputMemo = memo2(
     aiContext: AiContext | null,
     maxAgeHours: number,
     loaded: boolean,
+    aiRunning: boolean,
   ): CalcInput => ({
     order,
     book,
@@ -196,6 +199,7 @@ const calcInputMemo = memo2(
     aiContext,
     maxAgeHours,
     loaded,
+    aiRunning,
   }),
 );
 
@@ -211,6 +215,7 @@ export const selectCalcInput = (s: AppState): CalcInput =>
     s.ai.lastContext,
     s.settings.priceMaxAgeHours ?? 24,
     s.prices.loaded,
+    !!s.ai.run,
   );
 
 /** Для действий вне React: всегда по текущему состоянию */
