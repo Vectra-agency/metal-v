@@ -417,7 +417,7 @@ export async function aiStage(input: {
     if (input.signal?.aborted) throw new AiError('Анализ ИИ остановлен', 'aborted');
     const ctx = buildAiContext(input.order, null, input.book, input.settings, { images: refs.refs });
     const hash = contextHash(ctx);
-    const analysis = await analyzeOrder(ctx, refs.blobs, { signal: input.signal, onState: input.onJob });
+    const analysis = await analyzeOrder(ctx, refs.blobs, { signal: input.signal, onState: input.onJob, historyId: input.order.history?.id });
     const ai = aiStateFrom(analysis, input.order.positions, hash);
     const n = analysis.positions.filter((p) => p.status !== 'ok').length;
     const sec = Math.round(analysis.durationMs / 1000);

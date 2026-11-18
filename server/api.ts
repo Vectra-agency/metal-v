@@ -1,15 +1,20 @@
-// HTTP API калькулятора: цены mc.ru (кэш в data/prices.json) и ИИ-анализ заказа (server/ai.ts).
-// Используется и dev-сервером Vite, и боевым server/index.ts.
+// HTTP API калькулятора: цены mc.ru (кэш в data/prices.json), ИИ-анализ заказа (server/ai.ts)
+// и история заказов (server/history.ts). Используется и dev-сервером Vite, и боевым server/index.ts;
+// вход по паролю проверяется раньше (server/auth.ts).
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { refreshPrices } from './mc.ts';
-import { aiStatus, cancelJob, createJob, getJob, HttpError, putImage } from './ai.ts';
+import { aiStatus, cancelJob, createJob, getJob, putImage } from './ai.ts';
+import { handleHistory } from './history.ts';
+import { clientIp, HttpError, parseJson, readRaw, send, sendEmpty } from './http.ts';
 import { AI_LIMITS } from '../src/core/ai.ts';
 import { MATERIAL_BY_ID } from '../src/core/materials.ts';
 import type { PriceBook } from '../src/core/pricing.ts';
 
-// ключ ИИ для локального запуска — из calc/.env (нет в git и в образе); переменные окружения важнее файла
+export { readRaw };
+
+// ключ ИИ и пароль для локального запуска — из calc/.env (нет в git и в образе); переменные окружения важнее файла
 try {
   process.loadEnvFile(fileURLToPath(new URL('../.env', import.meta.url)));
 } catch {
@@ -30,25 +35,6 @@ function loadBook(): PriceBook {
     }
   }
   return { updatedAt: null, region: 'Санкт-Петербург', materials: {} };
-}
-
-function send(res: ServerResponse, code: number, body: unknown) {
-  res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-  res.end(JSON.stringify(body));
-}
-
-function sendEmpty(res: ServerResponse, code: number) {
-  res.writeHead(code, { 'Cache-Control': 'no-store' });
-  res.end();
-}
-
-/** Тело запроса → JSON; не разбирается — 400 */
-function parseJson(raw: Buffer): unknown {
-  try {
-    return JSON.parse(raw.toString('utf8'));
-  } catch {
-    throw new HttpError(400, 'Тело запроса — не JSON');
-  }
 }
 
 /** Пар [материал, толщина] в одном обновлении цен: интерфейс шлёт по 12 (REFRESH_BATCH в src/prices.ts) */
@@ -77,42 +63,6 @@ export function refreshPairs(body: unknown): [string, number][] {
   }
   if (!out.length) throw new HttpError(400, 'Не указаны толщины для обновления цен');
   return out;
-}
-
-/** Тело запроса не больше limit байт, иначе 413. Лишнее не копим; дочитывает и выбрасывает остаток Node */
-export function readRaw(req: IncomingMessage, limit: number): Promise<Buffer> {
-  const tooLarge = () => new HttpError(413, `Слишком большой запрос: больше ${Math.round(limit / 1000)} КБ`);
-  if (Number(req.headers['content-length']) > limit) return Promise.reject(tooLarge());
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    let size = 0;
-    let over = false;
-    req.on('data', (c: Buffer) => {
-      if (over) return;
-      size += c.length;
-      if (size > limit) {
-        over = true;
-        chunks.length = 0;
-        reject(tooLarge());
-      } else chunks.push(c);
-    });
-    req.on('end', () => {
-      if (!over) resolve(Buffer.concat(chunks));
-    });
-    req.on('error', reject);
-  });
-}
-
-/** Адрес клиента: за nginx — X-Real-IP (его ставит nginx), иначе адрес соединения */
-function clientIp(req: IncomingMessage): string {
-  const real = req.headers['x-real-ip'];
-  if (typeof real === 'string' && real.trim()) return real.trim();
-  // в X-Forwarded-For последний адрес добавлен ближайшим прокси, первые клиент может подделать
-  const xff = String(req.headers['x-forwarded-for'] ?? '')
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
-  return xff[xff.length - 1] ?? req.socket.remoteAddress ?? 'unknown';
 }
 
 const JOB_PATH = /^\/api\/ai\/jobs\/([^/]{1,100})(?:\/images\/(\d{1,3}))?$/;
@@ -194,6 +144,10 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse): Prom
     }
     if (url.pathname.startsWith('/api/ai/')) {
       await handleAi(req, res, url.pathname);
+      return true;
+    }
+    if (url.pathname === '/api/history' || url.pathname.startsWith('/api/history/')) {
+      await handleHistory(req, res, url.pathname);
       return true;
     }
     send(res, 404, { error: 'Нет такого метода' });

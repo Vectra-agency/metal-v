@@ -4,7 +4,7 @@ import { DEFAULT_QUOTE, type PieceRounding, type QuoteSettings } from '../quote.
 import { EMPTY_BOOK, loadOrder, loadSettings, saveOrder, saveSettings, type Order } from '../order.ts';
 import { initialStages } from '../pipeline.ts';
 import { createStore, useSelector } from './createStore.ts';
-import type { AiSlice, AppState, ColumnId, PipelineSlice, PricesState, TabId, UiState, View } from './types.ts';
+import type { AiSlice, AppState, ColumnId, HistorySlice, PipelineSlice, PricesState, TabId, UiState, View } from './types.ts';
 
 const K_QUOTE = 'metalcalc.quote.v1';
 const K_UI = 'metalcalc.ui.v1';
@@ -79,6 +79,10 @@ export function initialAi(server: AiSlice['server'] = null): AiSlice {
   return { server, run: null, pending: null, lastContext: null, lastImages: 0, outcome: { kind: 'none' } };
 }
 
+export function initialHistory(): HistorySlice {
+  return { available: null, matches: {}, matchKey: '', orders: 0, busy: null, version: 0, auth: { enabled: false, expiresAt: null } };
+}
+
 function initialPrices(): PricesState {
   return { book: EMPTY_BOOK, live: false, loaded: false, busy: 'Загрузка цен…', blockedUntil: null, issue: null };
 }
@@ -91,6 +95,7 @@ function initialState(): AppState {
     prices: initialPrices(),
     ai: initialAi(),
     pipeline: initialPipeline(),
+    history: initialHistory(),
     ui: {
       tab: tabFromHash() ?? 'positions',
       sheet: null,
@@ -123,7 +128,7 @@ export function merge<T extends object>(cur: T, p: Partial<T>): T {
   return cur;
 }
 
-type SliceKey = 'ui' | 'ai' | 'pipeline' | 'prices';
+type SliceKey = 'ui' | 'ai' | 'pipeline' | 'prices' | 'history';
 function patchSlice<K extends SliceKey>(key: K, p: Partial<AppState[K]>): void {
   setState((s) => {
     const next = merge(s[key], p);
@@ -141,6 +146,7 @@ export const patchUi = (p: Partial<UiState>): void => patchSlice('ui', p);
 export const patchAi = (p: Partial<AiSlice>): void => patchSlice('ai', p);
 export const patchPipeline = (p: Partial<PipelineSlice>): void => patchSlice('pipeline', p);
 export const patchPrices = (p: Partial<PricesState>): void => patchSlice('prices', p);
+export const patchHistory = (p: Partial<HistorySlice>): void => patchSlice('history', p);
 
 export const selectView = (s: AppState): View => (s.pipeline.processing ? 'processing' : s.order.positions.length ? 'result' : 'empty');
 

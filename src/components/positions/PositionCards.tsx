@@ -3,6 +3,7 @@ import { useState, type ReactElement } from 'react';
 import { Badge } from '@/components/ui/badge.tsx';
 import { Button } from '@/components/ui/button.tsx';
 import { PartPreview } from '@/components/common/PartPreview.tsx';
+import { HistoryMark } from '@/components/history/HistoryMatches.tsx';
 import { Money } from '@/components/common/Money.tsx';
 import { getMaterial } from '@/core/materials.ts';
 import { n0, NBSP, thick } from '@/format.ts';
@@ -44,6 +45,7 @@ function Card({ m, active, kop }: { m: RowModel; active: boolean; kop: boolean }
               {getMaterial(p.materialId).short} {thick(p.thickness)} · {n0(p.qty)}
               {NBSP}шт
             </span>
+            {!off && <HistoryMark id={m.base.id} />}
             {aiMarks > 0 && <span className="rounded-sm bg-ai-soft px-1 text-[11px] font-medium text-ai">✦ ИИ</span>}
             {m.offers.length > 0 && (
               <span className="rounded-full border border-dashed border-ai px-1.5 text-[11px] text-ai">✦ предложений: {m.offers.length}</span>

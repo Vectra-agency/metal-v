@@ -1,4 +1,4 @@
-// Шапка (ui-spec §2.2): марка, название заказа, этапы, «Добавить», «Скопировать для клиента», печать КП, «Расценки», «Ещё».
+// Шапка (ui-spec §2.2): марка, название заказа, этапы, «Добавить», «Скопировать для клиента», печать КП, «История», «Расценки», «Ещё».
 // Узкий экран (< 768 px): без марки, название на всю ширину, «+» и «Ещё» (в нём же копирование, печать, расценки);
 // этапы — второй строкой. Высота шапки → --header-h (по ней липнет полоса вкладок).
 import { useEffect, useRef, type ReactElement } from 'react';
@@ -20,7 +20,7 @@ import { Input } from '@/components/ui/input.tsx';
 import { Kbd } from '@/components/ui/kbd.tsx';
 import { useTheme, type Theme } from '@/components/ui/theme.ts';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx';
-import { Copy, Ellipsis, FilePlus2, FileSpreadsheet, Printer, SlidersHorizontal } from '@/components/common/icons.ts';
+import { Copy, Ellipsis, FilePlus2, FileSpreadsheet, History, Printer, SlidersHorizontal } from '@/components/common/icons.ts';
 import { CopyButton } from '@/components/quote/CopyButton.tsx';
 import { useMediaQuery } from '@/hooks/useMediaQuery.ts';
 import type { Order } from '@/order.ts';
@@ -28,7 +28,10 @@ import { openDialog, openSheet, setTitle } from '@/store/actions.ts';
 import { startNewOrder } from '@/store/pipelineActions.ts';
 import { copyForClient, downloadInternalCsv, printClient, printInternal } from '@/store/quoteActions.ts';
 import { useStore } from '@/store/store.ts';
-import { FileText, Keyboard, SunMoon } from 'lucide-react';
+import type { AppState } from '@/store/types.ts';
+import { FileText, Keyboard, LogOut, SunMoon } from 'lucide-react';
+import { logout } from '@/history/api.ts';
+import { openHistory } from '@/store/historyActions.ts';
 import { AddFilesMenu } from './AddFilesMenu.tsx';
 import { FilePickers } from './FilePickers.tsx';
 import { StagePills } from './StagePills.tsx';
@@ -65,9 +68,14 @@ const THEMES: { id: Theme; label: string }[] = [
 /** В заказе ничего нет: ни позиций, ни документов, ни заявки, ни названия — «Новый заказ» не нужен */
 const blankOrder = (o: Order): boolean => !o.positions.length && !(o.documents ?? []).length && !(o.request ?? '').trim() && !o.title.trim();
 
+/** История — только с сервером (в статической версии её нет) */
+const historyEnabled = (s: AppState): boolean => s.prices.live && s.history.available !== false;
+
 function MoreMenu({ compact }: { compact: boolean }): ReactElement {
   const empty = useStore((s) => !s.order.positions.length);
   const blank = useStore((s) => blankOrder(s.order));
+  const auth = useStore((s) => s.history.auth.enabled);
+  const historyOn = useStore(historyEnabled);
   const { theme, setTheme } = useTheme();
   return (
     <DropdownMenu>
@@ -96,6 +104,12 @@ function MoreMenu({ compact }: { compact: boolean }): ReactElement {
               <SlidersHorizontal aria-hidden />
               Расценки
             </DropdownMenuItem>
+            {historyOn && (
+              <DropdownMenuItem onSelect={() => openHistory()}>
+                <History aria-hidden />
+                История заказов
+              </DropdownMenuItem>
+            )}
             <DropdownMenuSeparator />
           </>
         )}
@@ -141,6 +155,16 @@ function MoreMenu({ compact }: { compact: boolean }): ReactElement {
           <FilePlus2 aria-hidden />
           Новый заказ
         </DropdownMenuItem>
+        {auth && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={() => void logout()}>
+              <LogOut aria-hidden />
+              Выйти
+              <DropdownMenuShortcut className="tracking-normal">пароль спросим снова</DropdownMenuShortcut>
+            </DropdownMenuItem>
+          </>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -150,6 +174,7 @@ export function Header(): ReactElement {
   const title = useStore((s) => s.order.title);
   const empty = useStore((s) => !s.order.positions.length);
   const pills = useStore((s) => s.pipeline.processing || s.order.positions.length > 0);
+  const historyOn = useStore(historyEnabled);
   const compact = !useMediaQuery('(min-width: 768px)');
   const ref = useRef<HTMLElement>(null);
 
@@ -196,6 +221,14 @@ export function Header(): ReactElement {
                 <Printer />
               </Button>
             </Hinted>
+            {historyOn && (
+              <Hinted hint="История заказов: прошлые расчёты и счета цехов">
+                <Button variant="ghost" aria-label="История заказов" className="shrink-0 max-xl:px-2" onClick={() => openHistory()}>
+                  <History data-icon="inline-start" />
+                  <span className="max-xl:sr-only">История</span>
+                </Button>
+              </Hinted>
+            )}
             <Hinted hint="Расценки: резка, гибка, материалы, КП">
               <Button variant="ghost" aria-label="Расценки" className="shrink-0 max-xl:px-2" onClick={() => openSheet({ kind: 'settings' })}>
                 <SlidersHorizontal data-icon="inline-start" />

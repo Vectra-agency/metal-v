@@ -5,12 +5,15 @@ import { defineConfig, type Alias, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { handleApi } from './server/api.ts';
+import { authGate } from './server/auth.ts';
 
-// API цен mc.ru прямо в dev-сервере — второй процесс не нужен
+// API цен mc.ru, ИИ и истории прямо в dev-сервере — второй процесс не нужен. Вход по паролю — только если
+// SITE_PASSWORD задан (в .env или окружении); без него в разработке сайт открыт
 const api = (): Plugin => ({
   name: 'metal-calc-api',
   configureServer(server) {
     server.middlewares.use(async (req, res, next) => {
+      if (await authGate(req, res)) return;
       if (!(await handleApi(req, res))) next();
     });
   },

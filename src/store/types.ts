@@ -1,5 +1,6 @@
 // Форма состояния приложения (ui-spec §4.2). Только типы.
 import type { AiAnalysis, AiContext, AiJobState, AiServerStatus } from '../core/ai.ts';
+import type { HistoryInvoice, HistoryMatch, HistoryOrder } from '../core/history.ts';
 import type { PriceBook, Settings } from '../core/pricing.ts';
 import type { Order } from '../order.ts';
 import type { ParseProgress, Stages } from '../pipeline.ts';
@@ -68,20 +69,23 @@ export interface PipelineSlice {
   runId: number;
 }
 
-export type SheetFocus = 'dims' | 'material' | 'thickness' | 'qty' | 'bends' | 'extras' | 'variant' | 'ai';
+export type SheetFocus = 'dims' | 'material' | 'thickness' | 'qty' | 'bends' | 'extras' | 'variant' | 'ai' | 'history';
 export type RequestSection = 'stages' | 'request' | 'documents' | 'missing' | 'journal';
 export type SettingsTab = 'cut' | 'bend' | 'mat' | 'nest' | 'extra' | 'quote';
 export type SheetState =
   | { kind: 'position'; id: string; focus?: SheetFocus }
   | { kind: 'item'; itemId: string }
   | { kind: 'request'; section?: RequestSection }
-  | { kind: 'settings'; tab?: SettingsTab };
+  | { kind: 'settings'; tab?: SettingsTab }
+  | { kind: 'history'; tab?: HistoryTab };
+export type HistoryTab = 'orders' | 'check';
 export type GuardAction = 'copy' | 'copyTable' | 'copyQuestions' | 'csv' | 'print';
 export type DialogState =
   | { kind: 'manual'; prefill?: { name?: string; qty?: number } }
   | { kind: 'pdfReview'; id: string }
   | { kind: 'guard'; action: GuardAction }
-  | { kind: 'shortcuts' };
+  | { kind: 'shortcuts' }
+  | { kind: 'invoice'; order: HistoryOrder; draft: HistoryInvoice }; // счёт цеха к заказу из истории
 export interface TriageState {
   ids: string[];
   index: number;
@@ -107,6 +111,17 @@ export interface UiState {
   printMode: 'client' | 'internal';
 }
 
+/** История заказов на сервере: совпадения деталей текущего заказа и состояние сохранения */
+export interface HistorySlice {
+  available: boolean | null; // на сервере есть история (null — ещё не спрашивали; false — статическая версия)
+  matches: Record<string, HistoryMatch[]>; // id позиции → та же деталь и похожие в прошлых заказах
+  matchKey: string; // для каких позиций найдены matches
+  orders: number; // заказов в истории (по последнему поиску)
+  busy: string | null; // «Сохраняю…» — кнопки сохранения недоступны
+  version: number; // меняется после сохранения/удаления — панель истории перечитывает список
+  auth: { enabled: boolean; expiresAt: string | null }; // вход по паролю: «Выйти» в меню
+}
+
 export interface AppState {
   order: Order;
   settings: Settings;
@@ -114,5 +129,6 @@ export interface AppState {
   prices: PricesState;
   ai: AiSlice;
   pipeline: PipelineSlice;
+  history: HistorySlice;
   ui: UiState;
 }

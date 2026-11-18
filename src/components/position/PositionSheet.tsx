@@ -10,6 +10,7 @@ import { ScrollArea } from '@/components/ui/scroll-area.tsx';
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet.tsx';
 import { Textarea } from '@/components/ui/textarea.tsx';
 import { AiReviewSection } from '@/components/ai/AiReviewSection.tsx';
+import { HistorySection } from '@/components/history/HistoryMatches.tsx';
 import { AttentionItemPanel } from '@/components/ai/AttentionItemPanel.tsx';
 import { AttentionItemView } from '@/components/ai/AttentionItemView.tsx';
 import { TriageHeader } from '@/components/ai/TriageHeader.tsx';
@@ -200,6 +201,12 @@ function PositionBody({ sheet }: { sheet: Extract<SheetState, { kind: 'position'
       <div data-sheet-focus="ai">
         <AiReviewSection positionId={id} />
       </div>
+
+      {!off && (
+        <div data-sheet-focus="history">
+          <HistorySection id={id} piece={r && !unpriced ? r.piece.total : null} materialId={pos.materialId} thickness={pos.thickness} />
+        </div>
+      )}
 
       <PriceSteps p={pos} r={r} g={g} line={line} kop={kop} settings={settings} markupPct={markupPct} unpriced={unpriced} />
 

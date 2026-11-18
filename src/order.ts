@@ -36,6 +36,14 @@ export interface OrderPosition extends Position {
   qtySource?: 'request'; // количество взято из заявки (её правка обновит его; ручная правка — снимает)
 }
 
+/** Заказ сохранён в общей истории на сервере (src/core/history.ts) */
+export interface OrderHistoryRef {
+  id: string; // HistoryOrder.id — повторное сохранение обновляет ту же запись
+  savedAt: string; // ISO
+  hash: string; // отпечаток данных на момент сохранения: не совпал — заказ изменён после сохранения
+  invoice?: { number: string; date: string | null; supplier: string; fact?: number; calc?: number } | null; // счёт цеха в истории: строки, отнесённые к деталям, и наш расчёт тех же деталей
+}
+
 /** Запись журнала загрузки (что прочитано, пропущено, не распознано) */
 export interface JournalEntry {
   at: string; // ISO
@@ -61,6 +69,7 @@ export interface Order {
   checks?: Record<string, string>; // id замечания (с отпечатком значения) → когда нажато «Верно», ISO
   aiScope?: string[]; // id позиций, которые видел последний применённый анализ ИИ (≤ 150)
   journal?: JournalEntry[]; // журнал загрузки, новые в конце, не больше JOURNAL_MAX
+  history?: OrderHistoryRef; // сохранён в истории заказов
 }
 
 export const DEFAULT_MARKUP_PCT = 50;
@@ -334,6 +343,9 @@ export function normalizeOrder(raw: unknown): Order {
   if (ai && !(ai.analysis && Array.isArray(ai.analysis.positions) && ai.accepted && typeof ai.accepted === 'object' && typeof ai.contextHash === 'string')) delete o.ai;
   o.checks = isObj(o.checks) ? Object.fromEntries(Object.entries(o.checks).filter(([, v]) => typeof v === 'string')) : {};
   o.aiScope = Array.isArray(o.aiScope) ? o.aiScope.filter((id) => typeof id === 'string') : [];
+  const h = o.history as unknown;
+  if (h !== undefined && !(isObj(h) && typeof h.id === 'string' && typeof h.savedAt === 'string' && typeof h.hash === 'string')) delete o.history;
+  else if (o.history?.invoice && !(isObj(o.history.invoice) && typeof o.history.invoice.number === 'string')) o.history = { ...o.history, invoice: null };
   o.journal = Array.isArray(o.journal)
     ? o.journal.filter((e) => isObj(e) && typeof e.at === 'string' && typeof e.text === 'string' && isLevel(e.level)).slice(-JOURNAL_MAX)
     : [];

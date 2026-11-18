@@ -1,7 +1,7 @@
 // ИИ-анализ заказа на сервере. Модель отвечает дольше 60 с, которые nginx ждёт ответа,
 // поэтому анализ — фоновая задача: браузер создаёт её (POST /api/ai/jobs), догружает
 // изображения чертежей (PUT …/images/<n>) и опрашивает (GET …/<id>); отмена — DELETE.
-// Сайт публичный: не больше 2 запросов к модели одновременно, очередь до 6 задач,
+// Модель стоит денег: не больше 2 запросов к модели одновременно, очередь до 6 задач,
 // 20 задач в час с одного адреса, проверка размеров; изображения — только в памяти.
 
 import { readFileSync } from 'node:fs';
@@ -16,7 +16,11 @@ import {
   type AiServerStatus,
 } from '../src/core/ai.ts';
 import { extractJson, sanitizeAnalysis } from '../src/core/aiSanitize.ts';
+import { HISTORY_ID, historyNote } from './history.ts';
+import { HttpError } from './http.ts';
 import { complete, isFallbackModel, LlmError, llmConfig, llmConfigured, visionEnabled, type LlmMessage, type LlmPart, type LlmUsage } from './llm.ts';
+
+export { HttpError };
 
 export const AI_SERVER_LIMITS = {
   concurrency: 2, // запросов к модели одновременно
@@ -31,16 +35,6 @@ export const AI_SERVER_LIMITS = {
 
 const HOUR = 3_600_000;
 const PROMPT = new URL('./prompts/analyze.md', import.meta.url);
-
-/** Ошибка HTTP API с текстом для пользователя */
-export class HttpError extends Error {
-  readonly status: number;
-  constructor(status: number, message: string) {
-    super(message);
-    this.name = 'HttpError';
-    this.status = status;
-  }
-}
 
 /** Ошибка анализа, текст которой можно показать пользователю как есть */
 class AiError extends Error {}
@@ -73,6 +67,7 @@ interface Job {
   repaired: boolean;
   error: string;
   ctrl: AbortController;
+  historyId?: string; // заказ уже в истории — не сравнивать его с самим собой
 }
 
 const jobs = new Map<string, Job>();
@@ -634,7 +629,8 @@ export function orderNote(ctx: AiContext): string {
   return `В заказе ${ctx.positions.length} поз.${active !== ctx.positions.length ? ` (в расчёте ${active})` : ''}, ${ctx.totals.pieces} шт по текущему расчёту${metal ? `; металл: ${metal}` : ''}.`;
 }
 
-export function buildPrompt(ctx: AiContext, images: Map<number, JobImage> = new Map()): Prompt {
+/** history — прошлые заказы и счета по деталям (server/history.ts historyNote); пусто — раздела нет */
+export function buildPrompt(ctx: AiContext, images: Map<number, JobImage> = new Map(), history = ''): Prompt {
   const t = promptTemplate();
   const today = ruDate(new Date());
   const system = fill(t.system, {
@@ -666,15 +662,17 @@ export function buildPrompt(ctx: AiContext, images: Map<number, JobImage> = new 
     request_matches: requestMatches(ctx),
     hints: positionHints(ctx),
     ops_hints: operationHints(ctx),
+    history_note: history ? `История заказов (та же деталь и похожие в прошлых заказах; «цех взял» — по счёту на оплату, ₽ с НДС):\n${history}` : '',
     order_note: orderNote(ctx),
     prices_note: pricesNote(ctx),
     images_note: attached.length
       ? `К сообщению приложены изображения чертежей (${attached.length}), перед каждым — подпись с номером и id позиции. Сверяй по ним гибы, отверстия, резьбу, покрытия и примечания; числа с изображения, которых нет в данных, используй только если они читаются однозначно.`
       : 'Изображений чертежей нет — опирайся на тексты и числа из данных.',
   });
+  const userText = user.replace(/\n{3,}/g, '\n\n');
   const parts: LlmPart[] | null = attached.length
     ? [
-        { type: 'text', text: user },
+        { type: 'text', text: userText },
         ...attached.flatMap((r): LlmPart[] => {
           const img = images.get(r.index)!;
           return [
@@ -684,7 +682,7 @@ export function buildPrompt(ctx: AiContext, images: Map<number, JobImage> = new 
         }),
       ]
     : null;
-  return { system, user, parts, images: attached.length };
+  return { system, user: userText, parts, images: attached.length };
 }
 
 // ---------- запрос к модели и разбор ответа ----------
@@ -838,7 +836,7 @@ async function run(job: Job): Promise<void> {
   const signal = AbortSignal.any([job.ctrl.signal, deadline]);
   try {
     const ctx = job.ctx!;
-    const prompt = buildPrompt(ctx, job.images);
+    const prompt = buildPrompt(ctx, job.images, historyNote(ctx, job.historyId));
     job.imagesSent = prompt.images;
     releaseImages(job); // дальше изображения живут только в запросе (base64)
     const r = await analyzePrompt(ctx, prompt, signal, job.startedAt);
@@ -894,6 +892,8 @@ export async function createJob(body: unknown, ip: string): Promise<AiJobCreated
   const cfg = llmConfig();
   if (!llmConfigured(cfg)) throw new HttpError(503, 'ИИ-анализ не настроен на сервере');
   const ctx = validateContext(body);
+  const hid = (body as { historyId?: unknown }).historyId;
+  const historyId = typeof hid === 'string' && HISTORY_ID.test(hid) ? hid : undefined;
   const vision = ctx.images.length > 0 && (await visionEnabled(cfg));
   sweep();
   const now = Date.now();
@@ -930,6 +930,7 @@ export async function createJob(body: unknown, ip: string): Promise<AiJobCreated
     repaired: false,
     error: '',
     ctrl: new AbortController(),
+    historyId,
   };
   jobs.set(job.id, job);
   if (!job.expected.size) enqueue(job);

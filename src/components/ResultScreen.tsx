@@ -1,4 +1,4 @@
-// Экран результата: итог заказа, анализ ИИ и вкладки (позиции, металл и раскрой, цены mc.ru, для клиента).
+// Экран результата: итог заказа, анализ ИИ, история (сохранён ли заказ, счёт цеха) и вкладки (позиции, металл и раскрой, цены mc.ru, для клиента).
 // Полоса вкладок липкая (под шапкой и полосой итогов); на вкладке «Позиции» во второй строке — поиск и фильтры.
 import type { ReactElement } from 'react';
 import { Badge } from '@/components/ui/badge.tsx';
@@ -6,6 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs.tsx';
 import { TriangleAlert } from '@/components/common/icons.ts';
 import { AiCard } from '@/components/ai/AiCard.tsx';
+import { HistoryStrip } from '@/components/history/HistoryStrip.tsx';
 import { MetalTab } from '@/components/metal/MetalTab.tsx';
 import { KpiBand } from '@/components/money/KpiBand.tsx';
 import { QtyMissingBanner } from '@/components/money/QtyMissingBanner.tsx';
@@ -41,6 +42,7 @@ export function ResultScreen(): ReactElement {
       <QtyMissingBanner />
       <KpiBand />
       <AiCard />
+      <HistoryStrip />
       <Tabs value={tab} onValueChange={(v) => setTab(v as TabId)} className="gap-0">
         <div className="sticky top-[calc(var(--header-h)+var(--strip-h))] z-20 -mx-4 bg-background/95 px-4 backdrop-blur lg:-mx-6 lg:px-6">
           <div className="flex h-11 items-end border-b max-sm:hidden">

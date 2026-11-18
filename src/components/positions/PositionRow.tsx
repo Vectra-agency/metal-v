@@ -34,6 +34,7 @@ import type { OrderPosition } from '@/order.ts';
 import { duplicatePosition, editPosition, flashRow, openPosition, removePositions, setHighlight, toggleSelected } from '@/store/actions.ts';
 import type { ColumnId } from '@/store/types.ts';
 import { STICKY_LEFT } from './columns.ts';
+import { HistoryBadge } from '@/components/history/HistoryMatches.tsx';
 import { PdfBadge } from './PdfBadge.tsx';
 import type { RowModel } from './rowModel.ts';
 import { StatusCell } from './StatusCell.tsx';
@@ -187,6 +188,7 @@ const NameCell = memo(function NameCell(props: NameProps): ReactElement {
             </Badge>
           )}
           {disabledBy && <AiChangeBadge change={disabledBy} positionId={id} />}
+          {!p.disabled && <HistoryBadge id={id} />}
         </div>
         <div className={cn('mt-0.5 flex min-w-0 items-center gap-1 overflow-hidden text-xs text-muted-foreground', marks && 'flex-wrap')}>
           <PdfBadge p={p} />

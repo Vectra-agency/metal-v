@@ -11,6 +11,8 @@
 | nginx | `/etc/nginx/sites-available/metal-v` = [ops/nginx/metal.conf](ops/nginx/metal.conf) |
 | TLS | Let's Encrypt, `certbot.timer` продлевает сам |
 | Проверка | `curl https://metal.vectra-agency.tech/api/health` → `{"ok":true,"version":"<sha>"}` |
+| Вход | общий пароль `SITE_PASSWORD` в `/var/www/metal-v/.env`, вход действует 30 дней (см. [Вход по паролю](#вход-по-паролю)) |
+| История заказов | `/var/www/metal-v/data/history.json`, копии за 14 дней — `data/history-backups/` (см. [История заказов](#история-заказов)) |
 | ИИ-анализ | ключ PoYo (`POYO_API_KEY`) — в `/var/www/metal-v/.env` (см. [ИИ-анализ](#ии-анализ)), проверка — `/api/ai/status` |
 
 ## Автодеплой (GitHub Actions)
@@ -65,6 +67,46 @@ cp ops/nginx/metal.conf /etc/nginx/sites-available/metal-v
 ln -s /etc/nginx/sites-available/metal-v /etc/nginx/sites-enabled/metal-v
 nginx -t && systemctl reload nginx
 ```
+
+## Вход по паролю
+
+Весь сайт и API (кроме `/api/health`) — только после входа: [server/auth.ts](server/auth.ts). Пароль один на всех,
+после входа браузер получает подписанную cookie (`HttpOnly`, `SameSite=Lax`, `Secure` за HTTPS) на 30 дней — пароль
+не спрашивается, пока она не истечёт. «Ещё → Выйти» снимает её раньше. Неверных паролей — не больше 10 за 15 минут
+с одного адреса (дальше 429), каждая ошибка — строка `[auth] неверный пароль с <ip>` в логе.
+
+**Задать пароль до выкладки этой версии** — иначе прод закрыт (форма входа скажет «на сервере не задан пароль»;
+`/api/health` и деплой при этом работают):
+
+```bash
+cd /var/www/metal-v
+printf 'SITE_PASSWORD=%s\n' 'придумайте-пароль' >> .env && chmod 600 .env
+docker compose up -d          # контейнер пересоздаётся с новыми переменными
+docker compose logs app | grep 'Вход:'   # «Вход: по паролю, вход действует 30 дней»
+```
+
+Сменить пароль — поменять строку в `.env` и `docker compose up -d`: все выданные входы перестают действовать.
+Необязательный `AUTH_SECRET` — доп. секрет подписи cookie (смена тоже выводит всех, пароль прежний).
+Проверка снаружи: `curl -s -o /dev/null -w '%{http_code}' https://metal.vectra-agency.tech/` → `401` (форма входа),
+`/api/health` → `200`.
+
+## История заказов
+
+Общая история заказов (кто вошёл — видит всё): [server/history.ts](server/history.ts), формат — [src/core/history.ts](src/core/history.ts).
+Файл `/var/www/metal-v/data/history.json` лежит в томе `./data` — переживает пересборку и деплой. Запись атомарная
+(временный файл + переименование); перед первой записью за день копия уходит в `data/history-backups/history-ГГГГ-ММ-ДД.json`,
+хранятся 14 последних. Восстановить — `docker compose stop app`, скопировать нужную копию в `data/history.json`,
+`docker compose start app`. Полная выгрузка в JSON — кнопка «Выгрузить всю историю» в панели «История» (или
+`GET /api/history/export` с cookie входа).
+
+Начальная история из `projects/1–4` (с их счетами цехов) собирается на машине разработчика —
+`npm run seed-history -- <распакованный projects/1/Обработанные.rar>` → `data/history-seed.json` — и загружается
+в проде через «История → Загрузить из файла…» (по 20 заказов за запрос, тело меньше 1 МБ nginx). Повторная загрузка
+того же файла ничего не дублирует: записи с тем же id и не более новые пропускаются.
+
+Ограничения: до 5000 заказов, до 400 деталей и 300 строк счёта в заказе, тело запроса до 900 КБ.
+ИИ-анализ получает из истории ту же деталь и похожие с ценой по счёту цеха (раздел «История заказов» в промпте);
+сам заказ, если он уже сохранён, с собой не сравнивается.
 
 ## ИИ-анализ
 

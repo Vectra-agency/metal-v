@@ -1,4 +1,5 @@
-# Калькулятор в проде: один контейнер — Node отдаёт собранный клиент (dist/) и API цен mc.ru.
+# Калькулятор в проде: один контейнер — Node отдаёт собранный клиент (dist/), API цен mc.ru, ИИ и истории заказов.
+# Вход по паролю (SITE_PASSWORD), вход действует 30 дней.
 # Наружу только 127.0.0.1:61890; TLS и gzip — на хостовом nginx (DEPLOY.md).
 #
 #   ./ops/deploy.sh          # сборка, перезапуск, проверка /api/health, откат при сбое
@@ -17,6 +18,9 @@ services:
     # не трогает; образец — .env.example). Пусто — анализ ИИ выключен, расчёт работает как раньше.
     # После правки .env: docker compose up -d (контейнер пересоздаётся с новыми переменными).
     environment:
+      # вход на сайт (server/auth.ts): без SITE_PASSWORD прод закрыт — форма входа скажет, что пароль не задан
+      SITE_PASSWORD: ${SITE_PASSWORD:-}
+      AUTH_SECRET: ${AUTH_SECRET:-}
       POYO_API_KEY: ${POYO_API_KEY:-}
       LLM_BASE_URL: ${LLM_BASE_URL:-}
       LLM_MODEL: ${LLM_MODEL:-}
@@ -27,7 +31,9 @@ services:
       LLM_VISION: ${LLM_VISION:-}
       LLM_JSON: ${LLM_JSON:-}
     volumes:
-      - ./data:/app/data # рабочие цены mc.ru (data/prices.json) переживают пересборку
+      # рабочие цены mc.ru (data/prices.json) и история заказов (data/history.json, копии в data/history-backups/)
+      # переживают пересборку
+      - ./data:/app/data
     restart: unless-stopped
     healthcheck:
       test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:8787/api/health']

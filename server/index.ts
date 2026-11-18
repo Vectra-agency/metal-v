@@ -1,4 +1,5 @@
-// Боевой сервер: отдаёт собранное приложение (dist/), API цен и ИИ-анализа.
+// Боевой сервер: отдаёт собранное приложение (dist/), API цен, ИИ-анализа и истории заказов.
+// Всё, кроме /api/health, — после входа по паролю (server/auth.ts).
 // Запуск: npm run serve  (сборка + старт) или npm start (если dist уже собран)
 import { createServer } from 'node:http';
 import { existsSync, readFileSync, statSync } from 'node:fs';
@@ -6,6 +7,7 @@ import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { handleApi } from './api.ts';
 import { aiStartupLine } from './ai.ts';
+import { authGate, authStartupLine } from './auth.ts';
 import { modelCatalog } from './llm.ts';
 
 const DIST = fileURLToPath(new URL('../dist/', import.meta.url));
@@ -35,6 +37,7 @@ if (!existsSync(INDEX)) {
 
 const server = createServer(async (req, res) => {
   try {
+    if (await authGate(req, res)) return;
     if (await handleApi(req, res)) return;
     const path = normalize(decodeURIComponent(new URL(req.url ?? '/', 'http://x').pathname)).replace(/^(\.\.[/\\])+/, '');
     const file = join(DIST, path);
@@ -62,6 +65,7 @@ const server = createServer(async (req, res) => {
   }
 }).listen(PORT, () => {
   console.log(`Калькулятор: http://localhost:${PORT}`);
+  console.log(authStartupLine());
   console.log(aiStartupLine());
   void modelCatalog(); // справочник моделей заранее: первый /api/ai/status не ждёт ~400 КБ каталога
 });

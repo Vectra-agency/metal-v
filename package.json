@@ -12,6 +12,8 @@
     "prices": "node scripts/update-prices.ts",
     "calibrate": "node scripts/calibrate.ts",
     "check-invoices": "node scripts/check-invoices.ts",
+    "test-history": "node scripts/test-history.ts",
+    "seed-history": "node scripts/seed-history.ts",
     "analyze": "node scripts/analyze.ts",
     "analyze-pdf": "node scripts/analyze-pdf.ts"
   },

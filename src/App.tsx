@@ -8,6 +8,8 @@ import { PositionSheet } from '@/components/position/PositionSheet.tsx';
 import { PdfReviewDialog } from '@/components/position/PdfReviewDialog.tsx';
 import { PrintRoot } from '@/components/print/PrintRoot.tsx';
 import { CopyGuardDialog } from '@/components/quote/CopyGuardDialog.tsx';
+import { HistorySheet } from '@/components/history/HistorySheet.tsx';
+import { InvoiceDialog } from '@/components/history/InvoiceDialog.tsx';
 import { SettingsSheet } from '@/components/settings/SettingsSheet.tsx';
 import { DropOverlay } from '@/components/shell/DropOverlay.tsx';
 import { EmptyScreen } from '@/components/shell/EmptyScreen.tsx';
@@ -32,9 +34,11 @@ export function App(): ReactElement {
         <PositionSheet />
         <RequestSheet />
         <SettingsSheet />
+        <HistorySheet />
         <ManualDialog />
         <PdfReviewDialog />
         <CopyGuardDialog />
+        <InvoiceDialog />
         <ShortcutsDialog />
       </div>
       <PrintRoot />

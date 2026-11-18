@@ -105,6 +105,7 @@ export interface AnalyzeOptions {
   onState?: (s: AiJobState) => void; // ожидание изображений, очередь, работа модели
   timeoutMs?: number;
   pollMs?: number; // для тестов
+  historyId?: string; // заказ сохранён в истории: сервер не сравнивает его с самим собой
 }
 
 /**
@@ -118,7 +119,7 @@ export async function analyzeOrder(ctx: AiContext, images: Blob[], opts: Analyze
   if (images.length !== ctx.images.length) throw new AiError('Число изображений не совпадает с контекстом анализа', 'failed');
   const big = images.findIndex((b) => b.size > AI_LIMITS.imageBytes);
   if (big >= 0) throw new AiError(`Изображение чертежа «${ctx.images[big].caption}» слишком большое для отправки`, 'too_large');
-  const body = JSON.stringify({ context: ctx });
+  const body = JSON.stringify(opts.historyId ? { context: ctx, historyId: opts.historyId } : { context: ctx });
   if (new TextEncoder().encode(body).length > AI_LIMITS.contextBytes + 1000) throw new AiError('Слишком большой заказ для анализа ИИ — уменьшите число позиций или документов', 'too_large', 413);
 
   const created = await call('/api/ai/jobs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, signal });

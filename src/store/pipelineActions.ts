@@ -618,6 +618,21 @@ function settledStages(stages: Stages): Stages {
 
 /** «Новый заказ»: сразу, с «Вернуть» 15 с; PDF прежнего заказа удаляются, когда вернуть уже нельзя */
 export function startNewOrder(): void {
+  replaceOrder(emptyOrder(), 'Начат новый заказ');
+}
+
+/** Заказ из истории вместо текущего — как «Новый заказ» (с «Вернуть»); устаревшие цены его толщин обновятся в фоне */
+export function openOrder(next: Order, message: string): void {
+  const n = next.positions.length;
+  let stages = updateStage(initialStages(), 'files', 'done', `Из истории: ${nPositions(n)}`);
+  stages = updateStage(stages, 'prices', 'done', 'Цены mc.ru — из справочника; устаревшие обновятся в фоне');
+  stages = updateStage(stages, 'ai', 'skipped', 'Анализ ИИ не запускался — заказ открыт из истории');
+  stages = updateStage(stages, 'calc', 'done', nPositions(n));
+  replaceOrder(next, message, stages);
+  ensureOrderPrices();
+}
+
+function replaceOrder(next: Order, message: string, stages?: Stages): void {
   const s0 = getState();
   const prev = s0.order;
   // «Вернуть» возвращает и сессию: поздний результат ИИ, «Что видел ИИ», ход расчёта
@@ -633,9 +648,9 @@ export function startNewOrder(): void {
   orderGen++;
   abortRuns();
   const ui = (u: AppState['ui']): AppState['ui'] => ({ ...u, sheet: null, dialog: null, triage: null, selection: [], filter: 'all', search: '', highlight: null, flash: null });
-  setState((s) => ({ ...s, order: emptyOrder(), pipeline: initialPipeline(), ai: initialAi(s.ai.server), ui: ui(s.ui) }));
+  setState((s) => ({ ...s, order: next, pipeline: stages ? { ...initialPipeline(), stages } : initialPipeline(), ai: initialAi(s.ai.server), ui: ui(s.ui) }));
   undoToast({
-    message: 'Начат новый заказ',
+    message,
     orderScoped: true, // после следующего «Новый заказ» этот уже не вернуть (сначала — его «Вернуть»)
     // прежний заказ — как был; расчёт и анализ нового заказа останавливаются
     undo: () => {
