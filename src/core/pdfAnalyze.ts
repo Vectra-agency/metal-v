@@ -7,7 +7,7 @@
 // 5) линии гиба — штриховые тонкие линии поперёк развёртки.
 
 import type { Prim, Vec } from './dxf.ts';
-import { analyze, boxOf, inside, signedArea, type Box, type Loop, type PartGeom } from './geometry.ts';
+import { analyze, boxOf, crossPoint, inside, signedArea, type Box, type Loop, type PartGeom } from './geometry.ts';
 import { getMaterial, kgPerM2 } from './materials.ts';
 import type { PdfPageData, PdfText } from './pdf.ts';
 
@@ -327,7 +327,7 @@ function bridgeGaps(chains: Vec[][]): Prim[] {
     used.add(j);
     const a = ends[i].p;
     const b = ends[j].p;
-    out.push({ pts: [a, b], length: Math.hypot(b.x - a.x, b.y - a.y), closed: false, kind: 'BRIDGE', layer: 'bridge', dashed: false });
+    out.push({ pts: [a, b], length: Math.hypot(b.x - a.x, b.y - a.y), closed: false, kind: 'BRIDGE', layer: 'bridge', dashed: false, ltype: '' });
   }
   return out;
 }
@@ -371,7 +371,7 @@ export function findCandidates(page: PdfPageData, region: Box | null): Candidate
     for (const p of page.paths) {
       if (classOf(Math.round(p.width * 100) / 100, classes) !== cls) continue;
       if (p.pts.every((v) => inBox(v, region))) continue;
-      prims.push({ pts: p.pts, length: p.length, closed: p.closed, kind: 'PDF', layer: String(cls), dashed: false });
+      prims.push({ pts: p.pts, length: p.length, closed: p.closed, kind: 'PDF', layer: String(cls), dashed: false, ltype: '' });
       total += p.length;
     }
     if (total < 30 || !prims.length) continue;
@@ -561,7 +561,17 @@ function chordRange(poly: Vec[], m: Vec, u: Vec): [number, number] | null {
  *  Если таких на виде нет, конструктор рисовал гибы штрихпунктиром/штрихами —
  *  тогда берём такие линии, пересекающие деталь от края до края.
  *  Линии обрезаются по контуру (на чертеже их часто выводят за деталь). */
-export function findBendLines(page: PdfPageData, cand: Candidate): Vec[][] {
+/** Линии гиба вида и почему они гибы; отвергнутые штриховые линии внутри детали — с причиной (для карточки позиции) */
+export interface BendLines {
+  lines: Vec[][];
+  why: string[];
+  rejected: { line: Vec[]; why: string }[];
+}
+
+
+const linesWord = (n: number) => (n % 10 === 1 && n % 100 !== 11 ? 'линию' : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? 'линии' : 'линий');
+
+export function findBendLines(page: PdfPageData, cand: Candidate): BendLines {
   const outer = cand.part.outer.pts;
   const holes = cand.part.holes.map((h) => h.pts);
   const b = cand.bbox;
@@ -590,8 +600,10 @@ export function findBendLines(page: PdfPageData, cand: Candidate): Vec[][] {
       g.items.push({ t0: Math.min(t0, t1), t1: Math.max(t0, t1) });
     }
   }
-  const strict: Vec[][] = [];
-  const loose: Vec[][] = [];
+  type Found = { line: Vec[]; why: string };
+  const strict: Found[] = [];
+  const loose: Found[] = [];
+  const rejected: Found[] = [];
   const minSpan = Math.max(8, 0.12 * Math.min(b.maxX - b.minX, b.maxY - b.minY));
   for (const g of groups.values()) {
     g.items.sort((p, q) => p.t0 - q.t0);
@@ -633,7 +645,6 @@ export function findBendLines(page: PdfPageData, cand: Candidate): Vec[][] {
       const c0 = Math.max(r.t0, tm + cr[0]);
       const c1 = Math.min(r.t1, tm + cr[1]);
       const span = c1 - c0;
-      if (span < minSpan) continue;
       // рисунок штриха — только по целым штрихам внутри (обрезанные по краю искажают)
       const inPs = r.ps.filter((p) => p.t0 >= c0 - 0.01 && p.t1 <= c1 + 0.01).map((p) => p.t1 - p.t0);
       if (inPs.length < 3) continue;
@@ -643,11 +654,34 @@ export function findBendLines(page: PdfPageData, cand: Candidate): Vec[][] {
       if (dashes < 2) continue;
       const ratio = dots / dashes;
       const line = [at(c0), at(c1)];
-      if (ratio > 1.5 && ratio < 2.6) strict.push(line);
-      else if (span >= 0.85 * (cr[1] - cr[0])) loose.push(line); // поперёк всей детали
+      const kind = ratio > 1.5 && ratio < 2.6 ? 'штрихпунктир с двумя точками' : ratio > 0.5 ? 'штрихпунктир с одной точкой' : 'штриховая';
+      if (span < minSpan) {
+        rejected.push({ line, why: `${kind}, но внутри детали короче ${Math.round((minSpan / Math.min(b.maxX - b.minX, b.maxY - b.minY)) * 100)} % её меньшей стороны — не гиб` });
+        continue;
+      }
+      if (ratio > 1.5 && ratio < 2.6) strict.push({ line, why: 'штрихпунктир с двумя точками — линия сгиба по ЕСКД' });
+      else if (span >= 0.85 * (cr[1] - cr[0])) loose.push({ line, why: `${kind} поперёк всей детали — линий сгиба по ЕСКД (с двумя точками) на виде нет, берём такие` });
+      else rejected.push({ line, why: `${kind} не через всю деталь — на линию сгиба не похожа` });
     }
   }
-  return strict.length ? strict : loose;
+  const chosen = strict.length ? strict : loose;
+  if (strict.length) for (const l of loose) rejected.push({ line: l.line, why: 'штриховая — на виде есть линии сгиба по ЕСКД (с двумя точками), эта другого типа: ось или невидимый контур' });
+  // гибы на развёртке друг друга в металле не пересекают (в вырезе или отверстии — можно): линия, которая пересекает
+  // другие, — ось симметрии или вспомогательная
+  const inMetal = (v: Vec) => inside(v, outer) && !holes.some((h) => inside(v, h));
+  const crosses = (c: Found, d: Found) => {
+    const x = crossPoint(c.line[0], c.line[1], d.line[0], d.line[1], 0.5);
+    return !!x && inMetal(x);
+  };
+  for (;;) {
+    const counts = chosen.map((c, i) => chosen.reduce((n, d, j) => n + (i !== j && crosses(c, d) ? 1 : 0), 0));
+    const worst = counts.reduce((bi, n, i) => (n > counts[bi] ? i : bi), 0);
+    if (!chosen.length || counts[worst] === 0) break;
+    rejected.push({ line: chosen[worst].line, why: `пересекает ${counts[worst]} ${linesWord(counts[worst])} гиба — гибы не пересекаются: это ось или вспомогательная линия` });
+    chosen.splice(worst, 1);
+  }
+  const len = (l: Vec[]) => Math.hypot(l[1].x - l[0].x, l[1].y - l[0].y);
+  return { lines: chosen.map((c) => c.line), why: chosen.map((c) => c.why), rejected: rejected.sort((x, y) => len(y.line) - len(x.line)).slice(0, 20) };
 }
 
 // ---------- сборка результата ----------
@@ -669,7 +703,15 @@ export interface PdfMeta {
   table: VariantTable | null;
   row: number; // выбранное исполнение (-1 — как на чертеже)
   axes: Record<string, 'x' | 'y'>; // буквенный размер → ось вида
-  base: { outer: number[]; holes: number[][]; bends: number[][]; bbox: Box; brk?: BreakInfo | null };
+  base: {
+    outer: number[];
+    holes: number[][];
+    bends: number[][];
+    bbox: Box;
+    brk?: BreakInfo | null;
+    bendWhy?: string[]; // почему каждая линия из bends — гиб
+    notBends?: { pts: number[]; why: string }[]; // штриховые линии внутри детали, не засчитанные гибом
+  };
 }
 
 export interface PdfGeometry {
@@ -694,8 +736,16 @@ const unflat = (a: number[]) => {
   return out;
 };
 
-export function baseOf(c: Candidate, bends: Vec[][]): PdfMeta['base'] {
-  return { outer: flatArr(c.part.outer.pts), holes: c.part.holes.map((h) => flatArr(h.pts)), bends: bends.map(flatArr), bbox: c.bbox, brk: c.brk };
+export function baseOf(c: Candidate, bl: BendLines): PdfMeta['base'] {
+  return {
+    outer: flatArr(c.part.outer.pts),
+    holes: c.part.holes.map((h) => flatArr(h.pts)),
+    bends: bl.lines.map(flatArr),
+    bbox: c.bbox,
+    brk: c.brk,
+    ...(bl.lines.length ? { bendWhy: bl.why } : {}),
+    ...(bl.rejected.length ? { notBends: bl.rejected.map((r) => ({ pts: flatArr(r.line), why: r.why })) } : {}),
+  };
 }
 
 /** Буквенные размеры (L, A, C*…) у выбранного вида → по какой оси они задают габарит */

@@ -3,7 +3,7 @@
 import { memo, type KeyboardEvent, type ReactElement } from 'react';
 import { cn } from '@/lib/utils.ts';
 import type { Sheet } from '@/core/nesting.ts';
-import { n0 } from '@/format.ts';
+import { n0, n2 } from '@/format.ts';
 import { openPosition, setHighlight } from '@/store/actions.ts';
 
 export interface SheetSvgProps {
@@ -15,6 +15,7 @@ export interface SheetSvgProps {
   names: Map<string, string>; // id позиции → обозначение
   highlight: string | null;
   truncated: boolean; // раскладка по выборке — «*» в подписи
+  coilWidth?: number; // рулон: w — длина размотки, подпись «Рулон 1500 · 2,35 м»
 }
 
 function onPartKey(e: KeyboardEvent<SVGRectElement>, id: string) {
@@ -23,10 +24,11 @@ function onPartKey(e: KeyboardEvent<SVGRectElement>, id: string) {
   openPosition(id);
 }
 
-export const SheetSvg = memo(function SheetSvg({ sheet, index, w, h, showUsed, names, highlight, truncated }: SheetSvgProps): ReactElement {
+export const SheetSvg = memo(function SheetSvg({ sheet, index, w, h, showUsed, names, highlight, truncated, coilWidth }: SheetSvgProps): ReactElement {
+  const title = coilWidth ? `Рулон ${coilWidth}` : `Лист ${index + 1}`;
   return (
     <figure className="flex min-w-0 flex-col gap-1">
-      <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="xMidYMid meet" role="group" aria-label={`Лист ${index + 1}`} className="h-auto w-full overflow-visible">
+      <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="xMidYMid meet" role="group" aria-label={title} className="h-auto w-full overflow-visible">
         <rect x={0} y={0} width={w} height={h} className="fill-muted stroke-border" vectorEffect="non-scaling-stroke" strokeWidth={1} />
         {showUsed && <rect x={0} y={0} width={sheet.usedLength} height={sheet.usedWidth} className="fill-secondary" />}
         {sheet.placed.map((pl, k) => {
@@ -65,8 +67,9 @@ export const SheetSvg = memo(function SheetSvg({ sheet, index, w, h, showUsed, n
         })}
       </svg>
       <figcaption className="text-xs text-muted-foreground tabular-nums">
-        Лист {index + 1}
-        {truncated ? '*' : ''} · {sheet.placed.length} шт
+        {title}
+        {truncated ? '*' : ''}
+        {coilWidth ? ` × ${n2(sheet.usedLength / 1000)} м` : ''} · {sheet.placed.length} шт
       </figcaption>
     </figure>
   );

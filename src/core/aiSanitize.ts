@@ -3,7 +3,7 @@
 // только позиции и материалы заказа, числа в допустимых пределах, тексты без markdown
 // и обрезаны, повторы убраны. Чистый модуль без зависимостей — и для сервера, и для браузера.
 
-import type { AiAnalysis, AiContext, AiPosition, AiPositionReview, AiStatus, AiSuggestion, AiUsage } from './ai.ts';
+import type { AiAnalysis, AiBendReview, AiContext, AiPosition, AiPositionReview, AiStatus, AiSuggestion, AiUsage } from './ai.ts';
 
 /** Ограничения ответа: длины строк и размеры списков */
 export const AI_OUTPUT_LIMITS = {
@@ -505,6 +505,7 @@ function scrubIds(raw: Obj, positions: AiPosition[]): Obj {
   const deep = (v: unknown): unknown => (typeof v === 'string' ? fix(v) : Array.isArray(v) ? v.map(deep) : v);
   const out: Obj = { ...raw };
   for (const k of ['summary', 'questions', 'risks', 'recommendations']) if (k in out) out[k] = deep(out[k]);
+  if (Array.isArray(raw.bends)) out.bends = raw.bends.map((b) => (isObj(b) ? { ...b, reasoning: deep(b.reasoning) } : b));
   if (Array.isArray(raw.positions)) {
     out.positions = raw.positions.map((r) =>
       isObj(r)
@@ -643,10 +644,22 @@ export function sanitizeAnalysis(input: unknown, ctx: AiContext, meta: SanitizeM
     .filter((q) => !reaskedQty(q, ctx.positions, fixedByRequest))
     .slice(0, L.items);
   const confidence = String(raw.confidence ?? '').trim().toLowerCase();
+  // разбор гибов: позиция из заказа, целое число гибов (или null) и короткое обоснование; повтор позиции — первый
+  const bends: AiBendReview[] = [];
+  for (const b of arr(raw.bends)) {
+    if (!isObj(b)) continue;
+    const pos = find(b.id);
+    const reasoning = text(b.reasoning, L.comment);
+    if (!pos || !reasoning || bends.some((x) => x.id === pos.id)) continue;
+    const n = typeof b.count === 'number' ? b.count : typeof b.count === 'string' && b.count.trim() ? Number(b.count) : NaN;
+    const count = Number.isFinite(n) && n >= 0 && n <= 60 ? Math.round(n) : null;
+    bends.push({ id: pos.id, count, reasoning });
+  }
   return {
     summary: text(raw.summary, L.summary),
     confidence: confidence === 'high' || confidence === 'low' ? confidence : 'medium',
     positions,
+    ...(bends.length ? { bends } : {}),
     questions,
     risks: list(raw.risks, L.items, L.item),
     recommendations: list(raw.recommendations, L.items, L.item),

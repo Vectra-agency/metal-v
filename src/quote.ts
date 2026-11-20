@@ -5,7 +5,7 @@
 import { MATERIAL_BY_ID } from './core/materials.ts';
 import type { OrderResult, PriceBook, Settings } from './core/pricing.ts';
 import { dateDay, NBSP, plural, rub0, rub2, thick } from './format.ts';
-import type { Order, OrderPosition } from './order.ts';
+import { dxfBlocked, type Order, type OrderPosition } from './order.ts';
 import { pairFetchedAt } from './prices.ts';
 
 export type PieceRounding = 'kop' | 'rub' | 'ten';
@@ -85,8 +85,8 @@ export const materialText = (materialId: string, t: number): string => {
   return `${label.replace(/\s*\([^)]*\)/g, '').trim()} ${thick(t)}`;
 };
 
-/** Позиция без размеров (скан без габарита): цена не посчитана */
-export const isUnpriced = (p: OrderPosition): boolean => !p.disabled && p.qty > 0 && (p.geom.netArea <= 0 || p.geom.cutLength <= 0);
+/** Позиция без размеров (скан без габарита) или DXF с ошибкой (контур разомкнут, 3D…): цена не посчитана */
+export const isUnpriced = (p: OrderPosition): boolean => !p.disabled && p.qty > 0 && (p.geom.netArea <= 0 || p.geom.cutLength <= 0 || dxfBlocked(p));
 
 /** Позиции для денежного расчёта: без размеров — как исключённые (их гибка и доп. работы не входят в себестоимость,
  *  пустые заготовки не попадают в раскрой). В КП такая строка остаётся — «цена уточняется». Нет таких — тот же массив. */

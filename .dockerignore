@@ -8,3 +8,5 @@ public/_samples
 *.bat
 .env
 .env.*
+.tasks
+.claude

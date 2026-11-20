@@ -12,7 +12,7 @@ import { CatDot } from '@/components/common/CostBar.tsx';
 import { ExternalLink, Info, TriangleAlert } from '@/components/common/icons.ts';
 import { NumInput } from '@/components/common/NumInput.tsx';
 import type { SheetPolicy } from '@/core/materials.ts';
-import { fmtSheet, type GroupResult, type OrderResult } from '@/core/pricing.ts';
+import { fmtSheet, type GroupResult, type OrderResult, type SheetOption } from '@/core/pricing.ts';
 import { kg, n0, n1, n2, pct, rub, rub0, thick } from '@/format.ts';
 import { mcUrl } from '@/mcUrl.ts';
 import type { OrderPosition } from '@/order.ts';
@@ -54,14 +54,35 @@ function OfferFacts({ g }: { g: GroupResult }): ReactElement {
         )}
         {o.source === 'manual' && <span>{o.note}</span>}
       </span>
-      <span className="tabular-nums">
-        лист {fmtSheet(o.w, o.l)} = {n1(c.sheetKg)} кг = {rub0(c.sheetPrice)}
-      </span>
-      <span className="tabular-nums">
-        в расчёте <b className="font-medium text-foreground">{n2(c.sheetsCharged)}</b> листа · заполнение {pct(c.nest.utilization)}
-      </span>
+      {o.coil ? (
+        <>
+          <span className="tabular-nums">
+            рулон {o.w} мм: 1 м = {n1(c.sheetKg)} кг = {rub0(c.sheetPrice)}
+          </span>
+          <span className="tabular-nums">
+            размотка <b className="font-medium text-foreground">{n2(c.coilM ?? 0)}</b> м{c.capped ? `, в расчёте ${n2(c.sheetsCharged)} м` : ''} · заполнение{' '}
+            {pct(c.nest.utilization)}
+          </span>
+        </>
+      ) : (
+        <>
+          <span className="tabular-nums">
+            лист {fmtSheet(o.w, o.l)} = {n1(c.sheetKg)} кг = {rub0(c.sheetPrice)}
+          </span>
+          <span className="tabular-nums">
+            в расчёте <b className="font-medium text-foreground">{n2(c.sheetsCharged)}</b> листа · заполнение {pct(c.nest.utilization)}
+          </span>
+        </>
+      )}
     </div>
   );
+}
+
+/** «Рулон 1500 × 2,35 м» / «Лист 1500×3000 × 2» — что взять для группы */
+export function sheetTake(c: SheetOption): string {
+  if (c.offer.coil) return `рулон ${c.offer.w} × ${n2(c.coilM ?? 0)} м`;
+  const n = c.nest.sheets.length;
+  return `лист ${fmtSheet(c.offer.w, c.offer.l)} × ${n} шт`;
 }
 
 function Notes({ g, names }: { g: GroupResult; names: Map<string, string> }): ReactElement | null {
@@ -76,7 +97,12 @@ function Notes({ g, names }: { g: GroupResult; names: Map<string, string> }): Re
         <Alert className="py-2 text-xs">
           <Info />
           <AlertDescription className="text-xs">
-            {g.policy === 'whole' ? (
+            {c.offer.coil ? (
+              <>
+                По длине размотки рулона ({n2(c.coilM ?? 0)} м) вышло бы {rub0(c.nest.sheetsFractional * c.sheetPrice)}, но отход ограничен{' '}
+                {g.policy === 'whole' ? (maxWhole ?? 100) : maxWaste}% к массе заготовок. Потолок меняется в «Расценках».
+              </>
+            ) : g.policy === 'whole' ? (
               <>
                 Целыми листами вышло бы {rub0(Math.ceil(c.nest.sheetsFractional - 1e-9) * c.sheetPrice)} — для такой партии это неправдоподобно, поэтому отход ограничен{' '}
                 {maxWhole ?? 100}% к массе заготовок. Потолок меняется в «Расценках».
@@ -94,7 +120,7 @@ function Notes({ g, names }: { g: GroupResult; names: Map<string, string> }): Re
         <Alert className="border-warn/40 bg-warn-soft py-2">
           <TriangleAlert className="text-warn" />
           <AlertDescription className="text-xs text-foreground/80">
-            Не помещаются на лист целиком и считаются из частей: {splits.map(([id, sp]) => `${names.get(id) ?? id} — ${sp.pieces} ч.`).join('; ')}
+            {c.offer.coil ? `Шире рулона ${c.offer.w} мм` : 'Не помещаются на лист целиком'} и считаются из частей: {splits.map(([id, sp]) => `${names.get(id) ?? id} — ${sp.pieces} ч.`).join('; ')}
           </AlertDescription>
         </Alert>
       )}
@@ -186,12 +212,14 @@ export function GroupCard({ g, res, byId }: { g: GroupResult; res: OrderResult; 
                 return (
                   <SelectItem key={k} value={k} className="tabular-nums">
                     {k} — {rub0(o.materialCost)}
+                    {o.offer.rule ? ' (по правилу)' : ''}
                     {Object.keys(o.splits).length ? ' (с разбиением)' : ''}
                   </SelectItem>
                 );
               })}
             </SelectContent>
           </Select>
+          <p className="text-[11px] leading-snug text-muted-foreground">{g.autoChosen ? `Авто ${g.autoWhy}` : `Выбран вручную; авто — ${fmtSheet(g.auto.offer.w, g.auto.offer.l)}`}</p>
         </Field>
         <Field className="gap-1.5">
           <FieldLabel className="text-xs text-muted-foreground">Цена</FieldLabel>
@@ -232,18 +260,20 @@ export function GroupCard({ g, res, byId }: { g: GroupResult; res: OrderResult; 
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_260px]">
         <div className="flex min-w-0 flex-col gap-2">
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-3">
+          {/* рулон — одна полоса на всю ширину */}
+          <div className={c.offer.coil ? 'flex flex-col gap-3' : 'grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-3'}>
             {visible.map((s, i) => (
               <SheetSvg
                 key={i}
                 sheet={s}
                 index={i}
-                w={c.nest.sheetW}
+                w={c.offer.coil ? Math.max(s.usedLength, 1) : c.nest.sheetW}
                 h={c.nest.sheetH}
-                showUsed={i === sheets.length - 1 && g.policy === 'length' && !c.capped}
+                showUsed={!c.offer.coil && i === sheets.length - 1 && g.policy === 'length' && !c.capped}
                 names={names}
                 highlight={hl}
                 truncated={c.nest.truncated}
+                coilWidth={c.offer.coil ? c.offer.w : undefined}
               />
             ))}
           </div>

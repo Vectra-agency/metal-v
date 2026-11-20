@@ -107,8 +107,11 @@ export function KpiBand(): ReactElement {
   const legend = CATS.filter((c) => parts[c.key] > 0 || c.key === 'material' || c.key === 'cut');
   const share = (v: number) => (T.cost > 0 ? `${Math.round((v / T.cost) * 100)}${NBSP}%` : `0${NBSP}%`);
   const enabled = d.positions.filter((p) => !p.disabled).length;
-  const sheets = d.res.groups.reduce((a, g) => a + g.chosen.sheetsCharged, 0);
+  // рулоны — в метрах размотки, листы — штуками в раскрое
+  const sheets = d.res.groups.reduce((a, g) => a + (g.chosen.offer.coil ? 0 : g.chosen.sheetsCharged), 0);
+  const coilM = d.res.groups.reduce((a, g) => a + (g.chosen.offer.coil ? g.chosen.sheetsCharged : 0), 0);
   const sheetsWord = Number.isInteger(sheets) ? plural(sheets, 'лист', 'листа', 'листов') : 'листа';
+  const metal = [sheets > 0 ? `${n1(sheets)} ${sheetsWord}` : '', coilM > 0 ? `${n1(coilM)}${NBSP}м рулона` : ''].filter(Boolean).join(' и ') || `0 листов`;
 
   return (
     <>
@@ -196,7 +199,7 @@ export function KpiBand(): ReactElement {
                     className="inline-flex items-center gap-1 rounded-sm text-left text-xs text-warn hover:underline focus-ring"
                   >
                     <TriangleAlert aria-hidden className="size-3.5 shrink-0" />
-                    Итог неполный: {q.unpriced} {plural(q.unpriced, 'позиция', 'позиции', 'позиций')} без размеров
+                    Итог неполный: {q.unpriced} {plural(q.unpriced, 'позиция', 'позиции', 'позиций')} без цены
                   </button>
                 )}
               </div>
@@ -242,7 +245,7 @@ export function KpiBand(): ReactElement {
           <p className="text-xs text-muted-foreground tabular-nums">
             {enabled} {plural(enabled, 'позиция', 'позиции', 'позиций')} · {n0(T.pieces)}
             {NBSP}шт · {kg(T.kg)} металла в деталях · рез {n1(T.cutM)}
-            {NBSP}м · {n0(T.bends)} {plural(T.bends, 'гиб', 'гиба', 'гибов')} · {n1(sheets)} {sheetsWord} в раскрое
+            {NBSP}м · {n0(T.bends)} {plural(T.bends, 'гиб', 'гиба', 'гибов')} · {metal} в раскрое
           </p>
         </div>
       </section>

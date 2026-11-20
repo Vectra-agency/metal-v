@@ -26,6 +26,25 @@ export interface OpenPath {
   length: number;
   straight: boolean;
   dashed: boolean;
+  layer?: string;
+  ltype?: string;
+  closed?: boolean; // замкнутая цепочка штриховых линий (контуром детали не считается)
+}
+
+/** Прямая или линия внутри детали: засчитана гибом или нет — и почему (для показа в карточке) */
+export interface BendCand {
+  pts: Vec[];
+  length: number;
+  bend: boolean;
+  why: string;
+}
+
+/** Незамкнутая линия после сцепки: где лежит (для проверки DXF — зазоры, хвосты, мусор) */
+export interface OpenLine {
+  pts: Vec[];
+  length: number;
+  straight: boolean;
+  where: 'bend' | 'inner' | 'stray' | 'anno'; // гиб / внутри детали, не гиб / вне детали / в рамке
 }
 
 export interface PartGeom {
@@ -38,7 +57,11 @@ export interface Analysis {
   parts: PartGeom[]; // найденные детали (наружные контуры)
   annotations: Loop[]; // рамки/штампы, отброшенные автоматически
   bends: OpenPath[]; // линии гиба внутри детали
+  bendCands: BendCand[]; // гибы и отвергнутые линии внутри детали — с причиной
   stray: OpenPath[]; // незамкнутые обрывки (предупреждение)
+  open: OpenLine[]; // все незамкнутые линии после сцепки
+  dupInPart: number; // задвоенных линий в детали (вне рамки)
+  eps: number; // допуск стыковки концов, мм
   bbox: Box; // габарит всего, что считаем деталью
   warnings: string[];
 }
@@ -151,6 +174,8 @@ interface Chain {
   length: number;
   closed: boolean;
   dashed: boolean;
+  layer: string;
+  ltype: string;
 }
 
 // Отделяем «висячие» примитивы: у которых хотя бы один конец ни с чем не
@@ -208,7 +233,7 @@ function chainPrims(prims: Prim[], eps: number): Chain[] {
     if (closedGeom) {
       const pts = p.pts.slice();
       if (dist(pts[0], pts[pts.length - 1]) <= eps) pts.pop();
-      chains.push({ pts, length: p.length, closed: true, dashed: p.dashed });
+      chains.push({ pts, length: p.length, closed: true, dashed: p.dashed, layer: p.layer, ltype: p.ltype });
     } else openAll.push(p);
   }
   const { core, dangling } = splitDangling(openAll, eps);
@@ -233,11 +258,13 @@ function chainOpen(open: Prim[], eps: number): Chain[] {
   });
   const used = new Uint8Array(open.length);
 
-  const findNext = (v: Vec, dashed: boolean): { idx: number; end: 0 | 1 } | null => {
+  // продолжение — ближайший конец в пределах допуска; линия того же слоя и типа важнее (контур продолжается контуром,
+  // а не линией гиба, которая подходит к тому же углу)
+  const findNext = (v: Vec, from: Prim): { idx: number; end: 0 | 1 } | null => {
     const cx = Math.floor(v.x / cell);
     const cy = Math.floor(v.y / cell);
     let best: { idx: number; end: 0 | 1 } | null = null;
-    let bestD = eps;
+    let bestKey = Infinity;
     for (let dx = -1; dx <= 1; dx++) {
       for (let dy = -1; dy <= 1; dy++) {
         const arr = grid.get(`${cx + dx},${cy + dy}`);
@@ -245,11 +272,13 @@ function chainOpen(open: Prim[], eps: number): Chain[] {
         for (const c of arr) {
           if (used[c.idx]) continue;
           const p = open[c.idx];
-          if (p.dashed !== dashed) continue;
+          if (p.dashed !== from.dashed) continue;
           const q = c.end === 0 ? p.pts[0] : p.pts[p.pts.length - 1];
           const d = dist(q, v);
-          if (d <= bestD) {
-            bestD = d;
+          if (d > eps) continue;
+          const key = (p.layer === from.layer && p.ltype === from.ltype ? 0 : 1) * 10 * eps + d;
+          if (key < bestKey) {
+            bestKey = key;
             best = c;
           }
         }
@@ -266,7 +295,7 @@ function chainOpen(open: Prim[], eps: number): Chain[] {
     let length = first.length;
     // вперёд
     for (;;) {
-      const nx = findNext(pts[pts.length - 1], first.dashed);
+      const nx = findNext(pts[pts.length - 1], first);
       if (!nx) break;
       used[nx.idx] = 1;
       const seg = open[nx.idx].pts;
@@ -278,7 +307,7 @@ function chainOpen(open: Prim[], eps: number): Chain[] {
     // назад, если не замкнулись
     if (dist(pts[0], pts[pts.length - 1]) > eps) {
       for (;;) {
-        const nx = findNext(pts[0], first.dashed);
+        const nx = findNext(pts[0], first);
         if (!nx) break;
         used[nx.idx] = 1;
         const seg = open[nx.idx].pts;
@@ -290,7 +319,7 @@ function chainOpen(open: Prim[], eps: number): Chain[] {
     }
     const closed = pts.length > 2 && dist(pts[0], pts[pts.length - 1]) <= eps;
     if (closed) pts.pop();
-    chains.push({ pts, length, closed, dashed: first.dashed });
+    chains.push({ pts, length, closed, dashed: first.dashed, layer: first.layer, ltype: first.ltype });
   }
   return chains;
 }
@@ -317,7 +346,7 @@ export interface AnalyzeOptions {
 export function analyze(dwg: DxfDrawing, opts: AnalyzeOptions = {}): Analysis {
   const warnings: string[] = [];
   if (!dwg.prims.length) {
-    return { parts: [], annotations: [], bends: [], stray: [], bbox: { minX: 0, minY: 0, maxX: 0, maxY: 0 }, warnings: ['В файле нет геометрии'] };
+    return { parts: [], annotations: [], bends: [], bendCands: [], stray: [], open: [], dupInPart: 0, eps: 0.01, bbox: { minX: 0, minY: 0, maxX: 0, maxY: 0 }, warnings: ['В файле нет геометрии'] };
   }
   const all = boxOf(dwg.prims.flatMap((p) => [p.pts[0], p.pts[p.pts.length - 1]]));
   const diag = Math.hypot(all.maxX - all.minX, all.maxY - all.minY);
@@ -332,12 +361,13 @@ export function analyze(dwg: DxfDrawing, opts: AnalyzeOptions = {}): Analysis {
     if (c.closed && !c.dashed && c.pts.length >= 3) {
       const a = Math.abs(signedArea(c.pts));
       if (a < 1e-6) {
-        openPaths.push({ pts: c.pts, length: c.length, straight: isStraight(c.pts, eps * 2), dashed: c.dashed });
+        openPaths.push({ pts: c.pts, length: c.length, straight: isStraight(c.pts, eps * 2), dashed: c.dashed, layer: c.layer, ltype: c.ltype, closed: true });
         continue;
       }
       loops.push({ id: loops.length, pts: c.pts, length: c.length, area: a, bbox: boxOf(c.pts), parent: -1, depth: 0 });
     } else {
-      openPaths.push({ pts: c.pts, length: c.length, straight: isStraight(c.pts, Math.max(eps * 2, 0.05)), dashed: c.dashed });
+      const closed = c.closed && c.pts.length >= 3; // замкнутая штриховая цепочка: прямоугольник линий гиба вокруг основания
+      openPaths.push({ pts: c.pts, length: c.length, straight: !closed && isStraight(c.pts, Math.max(eps * 2, 0.05)), dashed: c.dashed, layer: c.layer, ltype: c.ltype, closed });
     }
   }
 
@@ -414,23 +444,31 @@ export function analyze(dwg: DxfDrawing, opts: AnalyzeOptions = {}): Analysis {
   // крупные сначала
   parts.sort((a, b) => b.outer.area - a.outer.area);
 
-  // Открытые линии: прямые внутри детали — линии гиба; прочее — обрывки
-  const bends: OpenPath[] = [];
+  // Открытые линии: прямые внутри детали — кандидаты в линии гиба; прочее — обрывки
   const stray: OpenPath[] = [];
+  const open: OpenLine[] = [];
   const annoLoops = loops.filter((l) => annotationRoots.has(l.id));
+  const inner: { op: OpenPath; host: PartGeom }[] = [];
   for (const op of openPaths) {
-    const mid = op.pts[Math.floor(op.pts.length / 2)];
-    const a = op.pts[0];
-    const b = op.pts[op.pts.length - 1];
-    const midSeg = op.pts.length === 2 ? { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 } : mid;
-    if (annoLoops.some((l) => inside(midSeg, l.pts))) continue; // внутри рамки — игнор
-    const host = parts.find((pg) => pg.outer.depth === 0 && inside(midSeg, pg.outer.pts) && !pg.holes.some((h) => inside(midSeg, h.pts)));
-    // линия гиба — прямая, заметной длины относительно детали
-    const minBend = host ? Math.max(10, 0.25 * Math.min(host.outer.bbox.maxX - host.outer.bbox.minX, host.outer.bbox.maxY - host.outer.bbox.minY)) : Infinity;
-    if (host && op.straight && op.length >= minBend) bends.push(op);
-    else if (host) continue; // мелкий мусор внутри детали — не режется отдельно
-    else if (op.length > eps * 10) stray.push(op);
+    // где лежит линия — по точкам вдоль неё (вершины ломаной могут лежать на самом контуре, середина — в отверстии)
+    const probes = samples(op.pts, op.closed);
+    if (annoLoops.some((l) => inside(probes[0], l.pts))) {
+      open.push({ pts: op.pts, length: op.length, straight: op.straight, where: 'anno' }); // внутри рамки — игнор
+      continue;
+    }
+    const roots = parts.filter((pg) => pg.outer.depth === 0);
+    const inMetal = (pg: PartGeom, v: Vec) => inside(v, pg.outer.pts) && !pg.holes.some((h) => inside(v, h.pts));
+    const host = roots.find((pg) => probes.some((v) => inMetal(pg, v))) ?? roots.find((pg) => inside(probes[0], pg.outer.pts));
+    if (host) inner.push({ op, host });
+    else {
+      if (op.length > eps * 10) stray.push(op);
+      open.push({ pts: op.pts, length: op.length, straight: op.straight, where: 'stray' });
+    }
   }
+  const { bends, cands } = classifyBends(inner, eps);
+  for (const { op } of inner) open.push({ pts: op.pts, length: op.length, straight: op.straight, where: bends.some((b) => b.src.includes(op)) ? 'bend' : 'inner' });
+
+
   // о дублях сообщаем, только если они в самой детали (в рамке чертежа — не важно)
   const dupInPart = removed.filter((p) => {
     const mid = p.pts[Math.floor(p.pts.length / 2)];
@@ -444,7 +482,183 @@ export function analyze(dwg: DxfDrawing, opts: AnalyzeOptions = {}): Analysis {
   if (!parts.length) warnings.push('Не найдено ни одного замкнутого контура');
 
   const bbox = parts.length ? unionBox(parts.map((p) => p.outer.bbox)) : all;
-  return { parts, annotations, bends, stray, bbox, warnings };
+  return { parts, annotations, bends: bends.map((b) => b.path), bendCands: cands, stray, open, dupInPart, eps, bbox, warnings };
+}
+
+// ---------- линии гиба ----------
+
+const fmt0 = (v: number) => String(Math.round(v)).replace(/\B(?=(\d{3})+(?!\d))/g, '\u00a0');
+const linesWord = (n: number) => (n % 10 === 1 && n % 100 !== 11 ? 'линию' : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? 'линии' : 'линий');
+
+/** Расстояние от точки до ломаной (замкнутой) */
+export function distToPoly(p: Vec, poly: Vec[], closed = true): number {
+  let best = Infinity;
+  const n = poly.length;
+  for (let i = 0; i < (closed ? n : n - 1); i++) {
+    const a = poly[i];
+    const b = poly[(i + 1) % n];
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const L2 = dx * dx + dy * dy;
+    const t = L2 > 0 ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / L2)) : 0;
+    const d = Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
+    if (d < best) best = d;
+  }
+  return best;
+}
+
+/** Точка, где отрезки ab и cd пересекаются внутри (не концами); null — не пересекаются */
+export function crossPoint(a: Vec, b: Vec, c: Vec, d: Vec, tol: number): Vec | null {
+  const r = { x: b.x - a.x, y: b.y - a.y };
+  const q = { x: d.x - c.x, y: d.y - c.y };
+  const den = r.x * q.y - r.y * q.x;
+  if (Math.abs(den) < 1e-12) return null;
+  const t = ((c.x - a.x) * q.y - (c.y - a.y) * q.x) / den;
+  const u = ((c.x - a.x) * r.y - (c.y - a.y) * r.x) / den;
+  const lr = Math.hypot(r.x, r.y);
+  const lq = Math.hypot(q.x, q.y);
+  return t * lr > tol && (1 - t) * lr > tol && u * lq > tol && (1 - u) * lq > tol ? { x: a.x + r.x * t, y: a.y + r.y * t } : null;
+}
+
+/** Точки вдоль ломаной: середина самого длинного отрезка и ещё 6 точек по длине */
+function samples(pts: Vec[], closed = false): Vec[] {
+  const p = closed ? [...pts, pts[0]] : pts;
+  let k = 0;
+  let best = -1;
+  let total = 0;
+  for (let i = 0; i + 1 < p.length; i++) {
+    const l = dist(p[i], p[i + 1]);
+    total += l;
+    if (l > best) {
+      best = l;
+      k = i;
+    }
+  }
+  const out: Vec[] = [{ x: (p[k].x + p[k + 1].x) / 2, y: (p[k].y + p[k + 1].y) / 2 }];
+  for (const f of [0.15, 0.3, 0.45, 0.6, 0.75, 0.9]) {
+    let need = total * f;
+    for (let i = 0; i + 1 < p.length; i++) {
+      const l = dist(p[i], p[i + 1]);
+      if (need <= l && l > 0) {
+        out.push({ x: p[i].x + ((p[i + 1].x - p[i].x) * need) / l, y: p[i].y + ((p[i + 1].y - p[i].y) * need) / l });
+        break;
+      }
+      need -= l;
+    }
+  }
+  return out;
+}
+
+/** Прямые участки ломаной (замкнутая — с замыкающим отрезком): излом больше 1° — новый участок; дуги дают короткие участки */
+function straightRuns(op: OpenPath, eps: number): OpenPath[] {
+  const p = op.pts.slice();
+  if (op.closed && dist(p[0], p[p.length - 1]) > eps) p.push(p[0]); // замыкающий отрезок
+  const out: OpenPath[] = [];
+  let start = 0;
+  const dir = (i: number) => Math.atan2(p[i + 1].y - p[i].y, p[i + 1].x - p[i].x);
+  for (let i = 1; i < p.length; i++) {
+    const last = i === p.length - 1;
+    let turn = 0;
+    if (!last) {
+      turn = Math.abs(dir(i) - dir(i - 1));
+      if (turn > Math.PI) turn = 2 * Math.PI - turn;
+    }
+    if (last || turn > Math.PI / 180) {
+      const seg = p.slice(start, i + 1);
+      const len = seg.reduce((s, v, k) => (k ? s + dist(seg[k - 1], v) : 0), 0);
+      if (len > eps) out.push({ pts: [seg[0], seg[seg.length - 1]], length: len, straight: true, dashed: op.dashed, layer: op.layer, ltype: op.ltype });
+      start = i;
+    }
+  }
+  return out;
+}
+
+/**
+ * Линии гиба из незамкнутых линий внутри детали — с причиной для каждой (видно в карточке позиции):
+ * прямая не короче ¼ меньшей стороны детали; отрезки на одной прямой — один гиб (линию разрезало отверстие);
+ * линия, которая пересекает другие линии гиба, — ось или вспомогательная линия (гибы на развёртке не пересекаются).
+ */
+function classifyBends(inner: { op: OpenPath; host: PartGeom }[], eps: number): { bends: { path: OpenPath; src: OpenPath[] }[]; cands: BendCand[] } {
+  const rejected: BendCand[] = [];
+  type Cand = { host: PartGeom; a: Vec; b: Vec; len: number; src: OpenPath[]; op: OpenPath; merged: number };
+  const cands: Cand[] = [];
+  // ломаная из прямых (линии гиба, сошедшиеся в углу основания) — каждый прямой участок отдельно; src — исходная линия
+  const pieces: { op: OpenPath; host: PartGeom; parent: OpenPath }[] = [];
+  for (const it of inner) {
+    if (it.op.straight || it.op.pts.length < 3) pieces.push({ ...it, parent: it.op });
+    else for (const run of straightRuns(it.op, eps)) pieces.push({ op: run, host: it.host, parent: it.op });
+  }
+  for (const { op, host, parent } of pieces) {
+    const w = host.outer.bbox.maxX - host.outer.bbox.minX;
+    const h = host.outer.bbox.maxY - host.outer.bbox.minY;
+    const minSide = Math.min(w, h);
+    const minBend = Math.max(10, 0.25 * minSide);
+    if (!op.straight) {
+      if (op.length >= minBend) rejected.push({ pts: op.pts, length: op.length, bend: false, why: 'не прямая линия — гибом быть не может' });
+      continue;
+    }
+    if (op.length < minBend) {
+      if (op.length >= Math.max(5, 0.1 * minSide))
+        rejected.push({ pts: op.pts, length: op.length, bend: false, why: `короче ¼ меньшей стороны детали (${fmt0(op.length)} < ${fmt0(minBend)} мм) — не гиб` });
+      continue;
+    }
+    cands.push({ host, a: op.pts[0], b: op.pts[op.pts.length - 1], len: op.length, src: [parent], op, merged: 1 });
+  }
+  // отрезки на одной прямой в одной детали — один гиб
+  const tolOff = Math.max(eps * 4, 0.2);
+  for (let i = 0; i < cands.length; i++) {
+    for (let j = i + 1; j < cands.length; j++) {
+      const A = cands[i];
+      const B = cands[j];
+      if (A.host !== B.host) continue;
+      const ux = (A.b.x - A.a.x) / dist(A.a, A.b);
+      const uy = (A.b.y - A.a.y) / dist(A.a, A.b);
+      const off = (p: Vec) => Math.abs((p.x - A.a.x) * uy - (p.y - A.a.y) * ux);
+      if (off(B.a) > tolOff || off(B.b) > tolOff) continue;
+      const ts = [A.a, A.b, B.a, B.b].map((p) => (p.x - A.a.x) * ux + (p.y - A.a.y) * uy);
+      const t0 = Math.min(...ts);
+      const t1 = Math.max(...ts);
+      A.a = { x: A.a.x + ux * t0, y: A.a.y + uy * t0 };
+      A.b = { x: A.a.x + ux * (t1 - t0), y: A.a.y + uy * (t1 - t0) };
+      A.len = t1 - t0;
+      A.src.push(...B.src);
+      A.merged += B.merged;
+      cands.splice(j, 1);
+      j = i; // заново: продолжение могло стать ближе
+    }
+  }
+  // линии, пересекающиеся в металле (в вырезе или отверстии — можно): убираем ту, что пересекает больше других
+  const tolX = Math.max(1, eps * 20);
+  const crossInMetal = (c: Cand, d: Cand) => {
+    if (c.host !== d.host) return false;
+    const x = crossPoint(c.a, c.b, d.a, d.b, tolX);
+    return !!x && inside(x, c.host.outer.pts) && !c.host.holes.some((h) => inside(x, h.pts));
+  };
+  for (;;) {
+    const counts = cands.map((c, i) => cands.reduce((n, d, j) => n + (i !== j && crossInMetal(c, d) ? 1 : 0), 0));
+    const worst = counts.reduce((bi, n, i) => (n > counts[bi] ? i : bi), 0);
+    if (!cands.length || counts[worst] === 0) break;
+    const c = cands[worst];
+    rejected.push({ pts: [c.a, c.b], length: c.len, bend: false, why: `пересекает ${counts[worst]} ${linesWord(counts[worst])} гиба — гибы не пересекаются: это ось или вспомогательная линия` });
+    cands.splice(worst, 1);
+  }
+  const bends = cands.map((c) => {
+    const tol = Math.max(1, eps * 20);
+    const onEdge = [c.a, c.b].filter((p) => distToPoly(p, c.host.outer.pts) <= tol).length;
+    const op = c.op;
+    const parts = ['прямая', onEdge === 2 ? 'от края до края детали' : onEdge === 1 ? 'от края детали' : 'не доходит до краёв детали'];
+    if (op.dashed) parts.push(`штриховая${op.ltype ? ` (${op.ltype})` : ''}`);
+    else if (op.ltype && !/^(CONTINUOUS|BYLAYER|BYBLOCK|K5LT_BASIC.*)$/i.test(op.ltype)) parts.push(`тип линии ${op.ltype}`);
+    if (op.layer && op.layer !== '0') parts.push(`слой «${op.layer}»`);
+    if (c.merged > 1) parts.push(`${c.merged} отрезка на одной прямой — один гиб`);
+    const path: OpenPath = { pts: [c.a, c.b], length: c.len, straight: true, dashed: op.dashed, layer: op.layer, ltype: op.ltype };
+    return { path, src: c.src, why: parts.join(', ') };
+  });
+  const cand: BendCand[] = [
+    ...bends.map((b) => ({ pts: b.path.pts, length: b.path.length, bend: true, why: b.why })),
+    ...rejected.sort((x, y) => y.length - x.length).slice(0, 20),
+  ];
+  return { bends, cands: cand };
 }
 
 // Сводные метрики по выбранному набору деталей файла

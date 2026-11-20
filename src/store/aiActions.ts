@@ -6,7 +6,7 @@ import { focusOf, type AttentionAction, type AttentionItem } from '../attention.
 import { fieldLabel, formatAiValue, suggestionLabel } from '../components/common/aiFormat.ts';
 import type { AiAnalysis, AiState, AiSuggestion } from '../core/ai.ts';
 import { plural } from '../format.ts';
-import { openDialog, openPosition, openSheet, setFilter, setTab } from './actions.ts';
+import { acceptDxf, openDialog, openPosition, openSheet, setFilter, setTab } from './actions.ts';
 import { getDerived } from './derived.tsx';
 import { refreshPrices, runAnalysis } from './pipelineActions.ts';
 import { appStore, getState, patchUi, setOrder } from './store.ts';
@@ -219,6 +219,9 @@ export function runAttentionAction(item: AttentionItem, action: AttentionAction)
     case 'filter':
       setFilter(action.filter);
       setTab('positions');
+      return;
+    case 'acceptDxf':
+      acceptDxf(action.positionId);
       return;
   }
 }

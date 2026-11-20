@@ -57,6 +57,7 @@ export function mergeImports(existing: OrderPosition[], dxf: OrderPosition[], pd
       preview: d.preview,
       fileName: d.fileName,
       warnings: d.warnings,
+      dxfCheck: d.dxfCheck,
       qty: d.guessed.qty ? p.qty : d.qty,
       guessed: { ...f.guessed, qty: p.guessed.qty && d.guessed.qty },
       source: 'dxf',
@@ -82,6 +83,7 @@ export function mergeImports(existing: OrderPosition[], dxf: OrderPosition[], pd
       patch.detectedBends = q.bends;
       patch.bendLength = q.bendLength;
       patch.bendLengths = q.bendLengths;
+      patch.bendsFrom = 'pdf';
       got.push(`гибы (${q.bends})`);
     }
     if (f.materialId !== p.materialId) got.push('материал');
@@ -118,6 +120,8 @@ export function mergeImports(existing: OrderPosition[], dxf: OrderPosition[], pd
       patch.detectedBends = g.detectedBends;
       patch.bendLength = g.bendLength;
       patch.bendLengths = g.bendLengths;
+      patch.bendsFrom = 'pdf';
+      patch.bendsNote = `с общего чертежа ${base.name}`;
       got.push(`гибы (${g.bends})`);
     }
     if (f.materialId !== d.materialId) got.push('материал');
@@ -195,7 +199,7 @@ export function mergeImports(existing: OrderPosition[], dxf: OrderPosition[], pd
         Math.abs(Math.min(q.geom.width, q.geom.height) - Math.min(p.geom.width, p.geom.height)) <= 2,
     );
     if (!twin) continue;
-    list[i] = { ...p, bends: twin.detectedBends, bendLength: twin.bendLength, bendLengths: twin.bendLengths };
+    list[i] = { ...p, bends: twin.detectedBends, bendLength: twin.bendLength, bendLengths: twin.bendLengths, bendsFrom: 'twin', bendsNote: twin.name };
     notes.push(`${p.name}: гибы (${twin.detectedBends}) взяты с исполнения ${twin.name} того же чертежа — у этого вида линий гиба нет`);
   }
 

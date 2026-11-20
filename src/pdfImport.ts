@@ -111,6 +111,8 @@ export function geometryPatch(meta: PdfMeta, prev?: OrderPosition): Partial<Orde
     detectedBends: bendsDetected,
     bendLength: bendsDetected ? Math.round(g.bendMax) : Math.round(Math.max(g.width, g.height)),
     bendLengths: bendsDetected ? g.bends.map((l) => Math.round(polyLength(l))) : undefined,
+    bendsFrom: bendsDetected ? 'pdf' : undefined,
+    bendsNote: undefined,
   };
 }
 

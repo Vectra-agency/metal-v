@@ -30,7 +30,8 @@ import { PartPreview } from '@/components/common/PartPreview.tsx';
 import { ThicknessPicker } from '@/components/common/ThicknessPicker.tsx';
 import { kg, m as meters, n0, n1, n2, NBSP, pct1, rub } from '@/format.ts';
 import { cn } from '@/lib/utils.ts';
-import type { OrderPosition } from '@/order.ts';
+import { bendSource } from '@/bends.ts';
+import { dxfBlocked, type OrderPosition } from '@/order.ts';
 import { duplicatePosition, editPosition, flashRow, openPosition, removePositions, setHighlight, toggleSelected } from '@/store/actions.ts';
 import type { ColumnId } from '@/store/types.ts';
 import { STICKY_LEFT } from './columns.ts';
@@ -63,7 +64,7 @@ const STICKY = 'sticky z-1 bg-(--row-bg)';
 const isScan = (p: OrderPosition) => !!p.pdf && !p.pdf.meta.base.outer.length;
 
 /** «Нет размеров (скан)» / «Контур не найден» */
-export const noGeomText = (p: OrderPosition) => (isScan(p) ? 'Нет размеров (скан)' : 'Контур не найден');
+export const noGeomText = (p: OrderPosition) => (dxfBlocked(p) ? 'Ошибка в DXF' : isScan(p) ? 'Нет размеров (скан)' : 'Контур не найден');
 
 // ---------- отметки ИИ ----------
 
@@ -208,8 +209,13 @@ const NameCell = memo(function NameCell(props: NameProps): ReactElement {
           {geomInline && unpriced ? (
             <>
               <span className={cn('truncate text-danger', rest)}>{noGeomText(p)}</span>
-              <Button size="xs" variant="outline" className="h-5 shrink-0 px-1.5 text-[11px]" onClick={() => openPosition(id, { focus: 'dims' })}>
-                Задать габарит
+              <Button
+                size="xs"
+                variant="outline"
+                className="h-5 shrink-0 px-1.5 text-[11px]"
+                onClick={() => openPosition(id, { focus: dxfBlocked(p) ? 'dxf' : 'dims', reveal: true })}
+              >
+                {dxfBlocked(p) ? 'Подробнее' : 'Задать габарит'}
               </Button>
             </>
           ) : geomInline && p.geom.width > 0 ? (
@@ -289,7 +295,7 @@ const BendsCell = memo(function BendsCell({ id, pos: p, changes, offers, navRow 
           ai={hasChange(changes, 'bends')}
           onChange={(v) => editPosition(id, { bends: Math.round(v) })}
           aria-label={`Гибов на 1 шт: ${p.name}`}
-          title={`Линий гиба в файле: ${p.detectedBends}`}
+          title={`Гибы — ${bendSource(p)?.text ?? 'линий гиба в файлах не найдено'}. Почему столько — в карточке позиции, раздел «Гибы»`}
           navCol="bends"
           navRow={navRow}
           className="w-8 shrink-0"
@@ -324,11 +330,12 @@ const GeometryCell = memo(function GeometryCell(props: {
 }): ReactElement {
   const { id, pos: p, unpriced, netKg, cutM, pierces } = props;
   if (unpriced) {
+    const dxf = dxfBlocked(p);
     return (
       <div className="flex flex-col items-start gap-1">
         <span className="text-xs font-medium">{noGeomText(p)}</span>
-        <Button size="xs" variant="outline" className="h-5 px-1.5 text-[11px]" onClick={() => openPosition(id, { focus: 'dims' })}>
-          Задать габарит
+        <Button size="xs" variant="outline" className="h-5 px-1.5 text-[11px]" onClick={() => openPosition(id, { focus: dxf ? 'dxf' : 'dims', reveal: true })}>
+          {dxf ? 'Что не так' : 'Задать габарит'}
         </Button>
       </div>
     );

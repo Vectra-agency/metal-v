@@ -78,7 +78,7 @@ function OptionRow({ id, value, label, o, chosen }: { id: string; value: string;
       </TableCell>
       <TableCell className={num}>{n2(o.offer.pricePerKg)}</TableCell>
       <TableCell className={num}>{rub0(o.materialCost)}</TableCell>
-      <TableCell className={num}>{n2(o.sheetsCharged)}</TableCell>
+      <TableCell className={num}>{o.offer.coil ? `${n2(o.sheetsCharged)} м` : n2(o.sheetsCharged)}</TableCell>
       <TableCell className={num}>{pct(o.nest.utilization)}</TableCell>
       <TableCell className={cn(num, 'pr-3', split && 'text-warn')}>{split ? `${split} поз.` : '—'}</TableCell>
     </TableRow>
@@ -98,7 +98,7 @@ function Options({ g }: { g: GroupResult }): ReactElement {
               <TableHead className="pl-3">Формат</TableHead>
               <TableHead className="text-right">₽/кг</TableHead>
               <TableHead className="text-right">Металл группы</TableHead>
-              <TableHead className="text-right">Листов</TableHead>
+              <TableHead className="text-right">Листов (рулон — м)</TableHead>
               <TableHead className="text-right">Заполнение</TableHead>
               <TableHead className="pr-3 text-right">Не влезают</TableHead>
             </TableRow>
@@ -107,7 +107,7 @@ function Options({ g }: { g: GroupResult }): ReactElement {
             <OptionRow id={`${g.key}-auto`} value={AUTO} label={`Авто (${auto})`} o={g.auto} chosen={value === AUTO} />
             {g.options.map((o) => {
               const k = fmtSheet(o.offer.w, o.offer.l);
-              return <OptionRow key={k} id={`${g.key}-${k}`} value={k} label={k} o={o} chosen={value === k} />;
+              return <OptionRow key={k} id={`${g.key}-${k}`} value={k} label={o.offer.rule ? `${k} · по правилу` : k} o={o} chosen={value === k} />;
             })}
           </TableBody>
         </Table>

@@ -18,6 +18,7 @@ import { getMaterial, kgPerM2, MATERIALS } from '../core/materials.ts';
 import { computeOrder, fmtSheet, type OrderResult, type PriceBook, type Settings } from '../core/pricing.ts';
 import { mcUrl } from '../mcUrl.ts';
 import { orderSettings, type Order, type OrderPosition } from '../order.ts';
+import { bendSource } from '../bends.ts';
 import { desigKey, pdfCheck } from '../pdfImport.ts';
 import { pairFetchedAt } from '../prices.ts';
 
@@ -93,7 +94,8 @@ function groupsOf(res: OrderResult, book: PriceBook): AiGroup[] {
       sheet: fmtSheet(o.offer.w, o.offer.l),
       pricePerKg: r2(o.offer.pricePerKg),
       source: o.offer.source,
-      note: o.offer.note,
+      // рулон: металл — по длине размотки, sheets — метры рулона (не листы)
+      note: o.offer.coil ? `${o.offer.note}; рулон по длине размотки ${r2(o.coilM ?? 0)} м, sheets — метры` : o.offer.note,
       materialCost: r0(o.materialCost),
       sheets: r2(o.sheetsCharged),
       utilization: r3(o.nest.utilization),
@@ -107,10 +109,21 @@ function groupsOf(res: OrderResult, book: PriceBook): AiGroup[] {
 /** Строка не длиннее max (лимиты проверки на сервере) */
 const cap = (v: string, max: number) => (v.length > max ? v.slice(0, max - 1) + '…' : v);
 
+/** Откуда число гибов и какие линии найдены (с причинами) — чтобы ИИ мог объяснить, верно ли посчитаны гибы */
+function bendInfo(p: OrderPosition): Pick<AiPosition, 'bendsFrom' | 'bendLines' | 'notBendLines'> {
+  const out: Pick<AiPosition, 'bendsFrom' | 'bendLines' | 'notBendLines'> = {};
+  const src = bendSource(p);
+  if (src) out.bendsFrom = cap(src.text, 200);
+  if (src?.lines.length) out.bendLines = src.lines.slice(0, 20).map((l, i) => cap(`${i + 1}: ${l.len ? `${r0(l.len)} мм — ` : ''}${l.why}`, 200));
+  if (src?.rejected.length) out.notBendLines = src.rejected.slice(0, 5).map((l) => cap(`${l.len ? `${r0(l.len)} мм — ` : ''}${l.why}`, 200));
+  return out;
+}
+
 function positionOf(p: OrderPosition, res: OrderResult, imageIndex: number | undefined): AiPosition {
   const x = res.positions.get(p.id);
   const mat = getMaterial(p.materialId);
-  const warnings = [...new Set([...(p.warnings ?? []), ...(x?.warnings ?? [])])].slice(0, 30).map((w) => cap(w, 600));
+  const dxf = (p.dxfCheck?.issues ?? []).filter((i) => i.level !== 'info').map((i) => `DXF${i.level === 'error' ? (p.dxfAccepted ? ' (ошибка, посчитано как есть)' : ' (ошибка — цена не считается)') : ''}: ${i.text}`);
+  const warnings = [...new Set([...dxf, ...(p.warnings ?? []), ...(x?.warnings ?? [])])].slice(0, 30).map((w) => cap(w, 600));
   const out: AiPosition = {
     id: p.id,
     name: cap(p.name, 300),
@@ -133,6 +146,7 @@ function positionOf(p: OrderPosition, res: OrderResult, imageIndex: number | und
     bends: p.bends,
     detectedBends: p.detectedBends ?? 0,
     bendLengthMm: r0(p.bendLength),
+    ...bendInfo(p),
     extras: p.extras
       .filter((e) => !e.aiId)
       .slice(0, 50)

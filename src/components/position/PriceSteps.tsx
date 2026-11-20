@@ -5,7 +5,7 @@ import { Money } from '@/components/common/Money.tsx';
 import { getMaterial } from '@/core/materials.ts';
 import { CUT_GROUPS, fmtSheet, type GroupResult, type PosResult, type Settings } from '@/core/pricing.ts';
 import { kg, m as meters, n0, n1, n2, NBSP, pct, rub, rub0, thick } from '@/format.ts';
-import type { OrderPosition } from '@/order.ts';
+import { dxfBlocked, type OrderPosition } from '@/order.ts';
 import type { QuoteLine } from '@/quote.ts';
 
 function Step({ cat, title, value, children }: { cat: CatKey; title: string; value: number; children: ReactNode }): ReactElement {
@@ -40,6 +40,8 @@ export function PriceSteps({ p, r, g, line, kop, settings, markupPct, unpriced }
       </h3>
       {p.disabled ? (
         <p className="text-sm text-muted-foreground">Позиция исключена из расчёта.</p>
+      ) : unpriced && dxfBlocked(p) ? (
+        <p className="text-sm text-danger">Цена не посчитана: ошибка в файле DXF (см. «Проверка DXF» выше) — исправленный файл или «Считать как есть».</p>
       ) : unpriced ? (
         <p className="text-sm text-danger">Цена не посчитана: нет размеров. Задайте габарит вручную — форма «Габарит вручную» выше.</p>
       ) : !r || !g ? (
@@ -58,9 +60,9 @@ function Steps({ p, r, g, line, kop, settings, markupPct }: Omit<PriceStepsProps
   return (
     <ol className="space-y-3 text-sm">
       <Step cat="material" title="Металл" value={r.piece.material}>
-        Группа «{mat.short} {thick(p.thickness)}»: лист {fmtSheet(o.w, o.l)} по {n2(o.pricePerKg)}
+        Группа «{mat.short} {thick(p.thickness)}»: {o.coil ? `рулон ${o.w}` : `лист ${fmtSheet(o.w, o.l)}`} по {n2(o.pricePerKg)}
         {NBSP}₽/кг <span className="opacity-80">({o.note})</span> → {n1(g.chosen.sheetKg)}
-        {NBSP}кг = {rub0(g.chosen.sheetPrice)} за лист.
+        {NBSP}кг = {rub0(g.chosen.sheetPrice)} за {o.coil ? '1 м' : 'лист'}.
         <br />
         {g.policy === 'bbox' ? (
           <>
@@ -74,8 +76,8 @@ function Steps({ p, r, g, line, kop, settings, markupPct }: Omit<PriceStepsProps
           </>
         ) : (
           <>
-            На всю группу {g.policy === 'whole' ? 'целыми листами' : 'по раскрою'}: {n2(g.chosen.sheetsCharged)} листа (заполнение {pct(g.chosen.nest.utilization)}) ={' '}
-            {rub0(g.materialCost)}.
+            На всю группу {o.coil ? 'по длине размотки' : g.policy === 'whole' ? 'целыми листами' : 'по раскрою'}: {n2(g.chosen.sheetsCharged)} {o.coil ? 'м рулона' : 'листа'} (заполнение{' '}
+            {pct(g.chosen.nest.utilization)}) = {rub0(g.materialCost)}.
           </>
         )}
         <br />

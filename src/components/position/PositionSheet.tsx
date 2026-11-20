@@ -10,6 +10,8 @@ import { ScrollArea } from '@/components/ui/scroll-area.tsx';
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet.tsx';
 import { Textarea } from '@/components/ui/textarea.tsx';
 import { AiReviewSection } from '@/components/ai/AiReviewSection.tsx';
+import { BendsSection } from './BendsSection.tsx';
+import { DxfCheckSection } from './DxfCheckSection.tsx';
 import { HistorySection } from '@/components/history/HistoryMatches.tsx';
 import { AttentionItemPanel } from '@/components/ai/AttentionItemPanel.tsx';
 import { AttentionItemView } from '@/components/ai/AttentionItemView.tsx';
@@ -23,7 +25,7 @@ import { StatusCell } from '@/components/positions/StatusCell.tsx';
 import { n0, NBSP } from '@/format.ts';
 import { useMediaQuery } from '@/hooks/useMediaQuery.ts';
 import { cn } from '@/lib/utils.ts';
-import type { OrderPosition } from '@/order.ts';
+import { dxfBlocked, type OrderPosition } from '@/order.ts';
 import { closeSheet, duplicatePosition, editPosition, flashRow, openPosition, removePositions } from '@/store/actions.ts';
 import { triageNext, triagePrev } from '@/store/aiActions.ts';
 import { useDerived } from '@/store/derived.tsx';
@@ -151,7 +153,7 @@ function PositionBody({ sheet }: { sheet: Extract<SheetState, { kind: 'position'
   const warnings = uncoveredWarnings(pos, r, kinds);
   const unpriced = isUnpriced(pos);
   const off = !!pos.disabled;
-  const showDims = !base.pdf && (unpriced || dimsNonce > 0);
+  const showDims = !base.pdf && ((unpriced && !dxfBlocked(pos)) || dimsNonce > 0); // ошибка DXF — не размеры, а файл
 
   return (
     <div className={cn('space-y-6 px-3 py-4 transition-opacity sm:px-5', d.stale && 'opacity-90')}>
@@ -171,6 +173,8 @@ function PositionBody({ sheet }: { sheet: Extract<SheetState, { kind: 'position'
       <p className={cn('rounded-md px-3 py-2 text-sm', unpriced ? 'bg-danger-soft text-danger' : 'bg-muted/60')}>
         {off ? (
           'Позиция исключена из расчёта.'
+        ) : unpriced && dxfBlocked(pos) ? (
+          'Цена не посчитана: ошибка в файле DXF — см. «Проверка DXF» ниже'
         ) : unpriced ? (
           'Цена не посчитана: нет размеров'
         ) : r ? (
@@ -195,6 +199,10 @@ function PositionBody({ sheet }: { sheet: Extract<SheetState, { kind: 'position'
       )}
 
       <DrawingSection key={`drawing-${id}`} p={pos} />
+
+      <DxfCheckSection base={base} pos={pos} />
+
+      <BendsSection base={base} pos={pos} changes={changes} />
 
       {base.pdf && <PdfBlock key={`pdf-${id}`} base={base} pos={pos} focusDims={dimsNonce} />}
 

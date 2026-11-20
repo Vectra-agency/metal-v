@@ -75,6 +75,20 @@ export interface BendLenRow {
   k: number;
 }
 
+/** Какой лист берём под толщину: до upTo мм включительно (null — все толще), ширина w; l = null — рулон
+ *  (длина — сколько заняла раскладка), иначе лист w×l. Правила — по возрастанию толщины, последнее — «толще». */
+export interface SheetRule {
+  upTo: number | null;
+  w: number;
+  l: number | null;
+}
+
+/** До 3 мм включительно — рулон 1500, толще — лист 1500×3000 (3,5 мм — тоже лист) */
+export const DEFAULT_SHEET_RULES: readonly SheetRule[] = [
+  { upTo: 3, w: 1500, l: null },
+  { upTo: null, w: 1500, l: 3000 },
+];
+
 export interface Settings {
   cutting: CutRow[];
   bending: BendRow[];
@@ -94,6 +108,7 @@ export interface Settings {
   matK: Record<string, { cutK?: number; bendK?: number }>; // поправки к материалам: к прайсу резки и к гибке
   extraRates: ExtraRate[]; // ставки доп. операций для ИИ-анализа
   priceMaxAgeHours: number; // цены mc.ru старше — обновляются перед расчётом
+  sheetRules: SheetRule[]; // «Листы металла»: какой лист (рулон) берём под толщину — авто-выбор листа группы
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -165,7 +180,49 @@ export const DEFAULT_SETTINGS: Settings = {
     { label: 'Галтовка (снятие заусенцев)', unit: 'кг', price: 60 },
   ],
   priceMaxAgeHours: 24,
+  sheetRules: DEFAULT_SHEET_RULES.map((r) => ({ ...r })),
 };
+
+const okDim = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v > 0;
+
+/** Правила листов так, как их читает расчёт: по возрастанию толщины, последнее — «толще» (upTo = null).
+ *  Нет правил или они битые (старый файл расценок, ручная правка) — правила по умолчанию. */
+export function normalizeSheetRules(v: unknown): SheetRule[] {
+  const def = () => DEFAULT_SHEET_RULES.map((r) => ({ ...r }));
+  if (!Array.isArray(v) || !v.length || v.length > 100) return def();
+  const rows: SheetRule[] = [];
+  for (const r of v as unknown[]) {
+    if (!r || typeof r !== 'object') return def();
+    const x = r as Record<string, unknown>;
+    if (!okDim(x.w) || (x.l != null && !okDim(x.l)) || (x.upTo != null && !okDim(x.upTo))) return def();
+    rows.push({ upTo: x.upTo == null ? null : (x.upTo as number), w: x.w as number, l: x.l == null ? null : (x.l as number) });
+  }
+  const bounded = rows.filter((r) => r.upTo != null).sort((a, b) => a.upTo! - b.upTo!);
+  const rest = rows.find((r) => r.upTo == null);
+  if (rest) return [...bounded, rest];
+  // «толще» нет — последнее правило действует и для всех толщин больше
+  return [...bounded.slice(0, -1), { ...bounded[bounded.length - 1], upTo: null }];
+}
+
+/** Правило для толщины t: первое с t ≤ upTo, иначе последнее («толще») */
+export function sheetRuleFor(s: Pick<Settings, 'sheetRules'>, t: number): SheetRule {
+  const rules = normalizeSheetRules(s.sheetRules);
+  return rules.find((r) => r.upTo == null || t <= r.upTo + 1e-9) ?? rules[rules.length - 1];
+}
+
+/** «3», «3,5» — толщина в тексте правила */
+const n1s = (v: number) => String(Math.round(v * 100) / 100).replace('.', ',');
+
+/** «рулон 1500» / «лист 1500×3000» */
+export const ruleLabel = (r: SheetRule): string => (r.l == null ? `рулон ${r.w}` : `лист ${fmtSheet(Math.min(r.w, r.l), Math.max(r.w, r.l))}`);
+
+/** «до 3 мм — рулон 1500», «толще 3 мм — лист 1500×3000» */
+export function ruleText(s: Pick<Settings, 'sheetRules'>, r: SheetRule): string {
+  if (r.upTo != null) return `до ${n1s(r.upTo)} мм — ${ruleLabel(r)}`;
+  const rules = normalizeSheetRules(s.sheetRules);
+  const prev = rules.length > 1 ? rules[rules.length - 2].upTo : null;
+  return `${prev != null ? `толще ${n1s(prev)} мм` : 'все толщины'} — ${ruleLabel(r)}`;
+}
 
 // ---------- цены металла ----------
 
@@ -191,6 +248,8 @@ export interface SheetOffer {
   pricePerKg: number;
   source: 'mc' | 'estimate' | 'manual';
   note: string;
+  coil?: boolean; // рулон шириной w (l = 0): металл — по длине размотки
+  rule?: boolean; // формат из правила «Листы металла» для этой толщины
 }
 
 function median(xs: number[]): number {
@@ -200,7 +259,8 @@ function median(xs: number[]): number {
 }
 
 export const groupKey = (materialId: string, t: number) => `${materialId}|${t}`;
-export const fmtSheet = (w: number, l: number) => `${w}×${l}`;
+/** «1500×3000»; рулон (l = 0) — «рулон 1500». Это же ключ выбора листа в sheetChoice */
+export const fmtSheet = (w: number, l: number) => (l > 0 ? `${w}×${l}` : `рулон ${w}`);
 
 export function sheetOffers(book: PriceBook, mat: Material, t: number, s: Settings): SheetOffer[] {
   const items = (book.materials[mat.id] ?? []).filter((i) => i.w >= 500 && i.l >= 1000);
@@ -231,8 +291,30 @@ export function sheetOffers(book: PriceBook, mat: Material, t: number, s: Settin
     }
     offers = mat.defaultSheets.map(([w, l]) => ({ w, l, pricePerKg: price, source: 'estimate' as const, note }));
   }
-  if (manual && manual > 0) offers = offers.map((o) => ({ ...o, pricePerKg: manual, source: 'manual' as const, note: 'цена задана вручную' }));
-  return offers.sort((a, b) => a.w * a.l - b.w * b.l);
+  // формат по правилу «Листы металла»: есть среди предложений — помечаем; нет — ₽/кг этой толщины (лучше той же ширины)
+  const rule = sheetRuleFor(s, t);
+  const ruleKey = rule.l == null ? fmtSheet(rule.w, 0) : fmtSheet(Math.min(rule.w, rule.l), Math.max(rule.w, rule.l));
+  const have = offers.findIndex((o) => fmtSheet(o.w, o.l) === ruleKey);
+  if (have >= 0) offers[have] = { ...offers[have], rule: true };
+  else {
+    const same = exact.filter((i) => Math.min(i.w, i.l) === rule.w);
+    const base = same.length ? same : exact;
+    const fmts = [...new Set(base.map((i) => fmtSheet(Math.min(i.w, i.l), Math.max(i.w, i.l))))].join(', ');
+    const ref = base.length
+      ? { pricePerKg: median(base.map((i) => i.pricePerKg)), source: 'mc' as const }
+      : { pricePerKg: offers[0]?.pricePerKg ?? mat.fallbackPricePerKg, source: 'estimate' as const };
+    const why = base.length ? `₽/кг как у ${rule.l == null ? 'листа ' : ''}${fmts} на mc.ru` : (offers[0]?.note ?? 'цена по умолчанию');
+    const note = rule.l == null ? `рулон ${rule.w} — ${why}` : `нет ${ruleKey} на mc.ru — ${why}`;
+    offers.push(
+      rule.l == null
+        ? { w: rule.w, l: 0, coil: true, rule: true, note, ...ref }
+        : { w: Math.min(rule.w, rule.l), l: Math.max(rule.w, rule.l), rule: true, note, ...ref },
+    );
+  }
+  if (manual && manual > 0)
+    offers = offers.map((o) => ({ ...o, pricePerKg: manual, source: 'manual' as const, note: o.coil ? `рулон ${o.w} — цена задана вручную` : 'цена задана вручную' }));
+  // рулон — первым, листы — по площади
+  return offers.sort((a, b) => Number(!!b.coil) - Number(!!a.coil) || a.w * a.l - b.w * b.l);
 }
 
 // ---------- интерполяция расценок ----------
@@ -287,10 +369,11 @@ export interface SplitInfo {
 
 export interface SheetOption {
   offer: SheetOffer;
-  sheetKg: number;
-  sheetPrice: number;
-  nest: NestResult;
-  sheetsCharged: number;
+  sheetKg: number; // рулон — масса 1 м рулона
+  sheetPrice: number; // рулон — цена 1 м рулона
+  nest: NestResult; // рулон — раскладка на полосе, sheetsFractional — метры размотки
+  sheetsCharged: number; // рулон — метры в расчёте
+  coilM?: number; // рулон: длина размотки по раскладке (с полями), м
   materialCost: number;
   capped: boolean; // стоимость ограничена потолком отхода
   capCost: number;
@@ -310,6 +393,8 @@ export interface GroupResult {
   materialCost: number;
   partsKg: number; // масса деталей (нетто)
   bboxKg: number;
+  rule: SheetRule; // правило «Листы металла» для этой толщины
+  autoWhy: string; // почему автомат выбрал этот лист: «по правилу: до 3 мм — рулон 1500» …
 }
 
 export interface PosResult {
@@ -350,7 +435,53 @@ function splitFor(w: number, h: number, UW: number, UH: number): SplitInfo | nul
   return { pieces: nx * ny, extraCut, pieceW, pieceH };
 }
 
+const COIL_STRIP = 200_000; // мм: полоса рулона для раскладки — длиннее любого заказа
+
+/** Рулон: раскладка на одной полосе шириной w; металл — вся ширина × длина размотки (кусок рулона покупается целиком) */
+function evalCoil(offer: SheetOffer, mat: Material, t: number, policy: SheetPolicy, items: Position[], s: Settings): SheetOption {
+  const meterKg = (offer.w / 1000) * kgPerM2(mat, t);
+  const meterPrice = meterKg * offer.pricePerKg;
+  const UW = COIL_STRIP - 2 * s.margin;
+  const UH = offer.w - 2 * s.margin;
+  const splits: Record<string, SplitInfo> = {};
+  const nestItems = items.map((p) => {
+    const sp = splitFor(p.geom.width, p.geom.height, UW, UH); // только если деталь шире рулона в обе стороны
+    if (sp) splits[p.id] = sp;
+    const perUnit = Math.max(1, p.geom.count);
+    return sp
+      ? { key: p.id, w: sp.pieceW, h: sp.pieceH, qty: p.qty * sp.pieces * perUnit }
+      : { key: p.id, w: p.geom.width, h: p.geom.height, qty: p.qty * perUnit };
+  });
+  const n = nest(nestItems, { sheetW: COIL_STRIP, sheetH: offer.w, gap: s.gap, margin: s.margin });
+  const lengthMm = n.sheets.reduce((a, sh) => a + sh.usedLength, 0) / n.scale;
+  const coilM = lengthMm / 1000;
+  const partsArea = n.utilization * n.sheetsFractional * n.sheetW * n.sheetH; // площадь габаритов деталей
+  const nestC: NestResult = { ...n, sheetsFractional: coilM, utilization: lengthMm > 0 ? partsArea / (lengthMm * offer.w) : 0 };
+  const bboxKg = items.reduce((a, p) => a + (p.geom.bboxArea / 1e6) * p.qty, 0) * kgPerM2(mat, t);
+  const capCost = bboxKg * (1 + s.maxWastePct / 100) * offer.pricePerKg;
+  let sheetsCharged: number;
+  let materialCost: number;
+  let capped = false;
+  if (policy === 'bbox') {
+    const kg = bboxKg * (1 + s.bboxWastePct / 100);
+    materialCost = kg * offer.pricePerKg;
+    sheetsCharged = kg / meterKg;
+  } else {
+    // «по раскрою» и «целыми листами» — одинаково: отрезанный кусок рулона покупается целиком; потолки отхода — свои
+    sheetsCharged = coilM;
+    materialCost = coilM * meterPrice;
+    const cap = policy === 'whole' ? bboxKg * (1 + (s.maxWasteWholePct ?? 100) / 100) * offer.pricePerKg : capCost;
+    if (materialCost > cap) {
+      materialCost = cap;
+      sheetsCharged = cap / meterPrice;
+      capped = true;
+    }
+  }
+  return { offer, sheetKg: meterKg, sheetPrice: meterPrice, nest: nestC, sheetsCharged, materialCost, capped, capCost, splits, coilM };
+}
+
 function evalOption(offer: SheetOffer, mat: Material, t: number, policy: SheetPolicy, items: Position[], s: Settings): SheetOption {
+  if (offer.coil) return evalCoil(offer, mat, t, policy, items, s);
   const sheetKg = ((offer.w * offer.l) / 1e6) * kgPerM2(mat, t);
   const sheetPrice = sheetKg * offer.pricePerKg;
   const UW = offer.l - 2 * s.margin;
@@ -420,13 +551,22 @@ export function computeOrder(positions: Position[], book: PriceBook, s: Settings
     // авто: сначала листы, куда детали влезают целиком (разбиение = лишняя сварка),
     // среди них — самый дешёвый; при равенстве — меньше листов
     const pieces = (o: SheetOption) => Object.values(o.splits).reduce((a, sp) => a + sp.pieces, 0);
-    const auto = options.slice().sort((a, b) => {
+    const best = options.slice().sort((a, b) => {
       const d = pieces(a) - pieces(b);
       if (d) return d;
       const c = a.materialCost - b.materialCost;
       if (Math.abs(c) > 1) return c;
       return a.nest.sheets.length - b.nest.sheets.length;
     })[0];
+    // авто — лист по правилу «Листы металла»; деталь в него целиком не влезает, а в другой лист влезает — тот лист
+    const rule = sheetRuleFor(s, t);
+    const ruleOpt = options.find((o) => o.offer.rule);
+    let auto = best;
+    let autoWhy = 'самый дешёвый из листов, куда детали влезают целиком';
+    if (ruleOpt && pieces(best) >= pieces(ruleOpt)) {
+      auto = ruleOpt;
+      autoWhy = `по правилу: ${ruleText(s, rule)}`;
+    } else if (ruleOpt) autoWhy = `по правилу ${ruleText(s, rule)}, но деталь туда целиком не влезает — взят ${fmtSheet(best.offer.w, best.offer.l)}`;
     const want = s.sheetChoice[key];
     const picked = want ? options.find((o) => fmtSheet(o.offer.w, o.offer.l) === want) : undefined;
     const chosen = picked ?? auto;
@@ -446,6 +586,8 @@ export function computeOrder(positions: Position[], book: PriceBook, s: Settings
       materialCost: chosen.materialCost,
       partsKg: items.reduce((a, p) => a + (p.geom.netArea / 1e6) * kgm2 * p.qty, 0),
       bboxKg: items.reduce((a, p) => a + (p.geom.bboxArea / 1e6) * kgm2 * p.qty, 0),
+      rule,
+      autoWhy,
     };
     groups.push(g);
 
@@ -455,7 +597,10 @@ export function computeOrder(positions: Position[], book: PriceBook, s: Settings
     for (const p of items) {
       const warnings: string[] = [];
       const split = chosen.splits[p.id] ?? null;
-      if (split) warnings.push(`Не помещается на лист ${fmtSheet(chosen.offer.w, chosen.offer.l)} — считаем из ${split.pieces} частей (+${Math.round(split.extraCut)} мм реза)`);
+      if (split) {
+        const where = chosen.offer.coil ? `в ширину рулона ${chosen.offer.w}` : `на лист ${fmtSheet(chosen.offer.w, chosen.offer.l)}`;
+        warnings.push(`Не помещается ${where} — считаем из ${split.pieces} частей (+${Math.round(split.extraCut)} мм реза)`);
+      }
       const share = (p.geom.bboxArea * p.qty) / totalBbox;
       const material = (chosen.materialCost * share) / p.qty;
       const cutM = (p.geom.cutLength + (split?.extraCut ?? 0)) / 1000;

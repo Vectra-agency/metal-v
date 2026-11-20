@@ -1,7 +1,25 @@
 // Эскиз детали: контур, отверстия, линии гиба; отброшенное (рамки, обрывки) — серым пунктиром.
+// В карточке позиции: гибы — каждый своим цветом с номером (numbered), линии, не засчитанные гибом, — серым с «×»
+// (notBends), места ошибок DXF — кружками (marks).
 import type { ReactElement } from 'react';
 import { cn } from '@/lib/utils.ts';
 import type { Preview } from '@/order.ts';
+
+/** Середина ломаной (по длине) — для номера гиба */
+function midOf(a: number[]): [number, number] {
+  let total = 0;
+  for (let i = 2; i + 1 < a.length; i += 2) total += Math.hypot(a[i] - a[i - 2], a[i + 1] - a[i - 1]);
+  let acc = 0;
+  for (let i = 2; i + 1 < a.length; i += 2) {
+    const l = Math.hypot(a[i] - a[i - 2], a[i + 1] - a[i - 1]);
+    if (acc + l >= total / 2 && l > 0) {
+      const t = (total / 2 - acc) / l;
+      return [a[i - 2] + (a[i] - a[i - 2]) * t, a[i - 1] + (a[i + 1] - a[i - 1]) * t];
+    }
+    acc += l;
+  }
+  return [a[0] ?? 0, a[1] ?? 0];
+}
 
 const path = (a: number[], closed: boolean) => {
   if (a.length < 4) return '';
@@ -10,15 +28,27 @@ const path = (a: number[], closed: boolean) => {
   return closed ? d + 'Z' : d;
 };
 
+/** Цвет гиба № i (с 0): те же цвета в списке гибов под эскизом */
+const BEND_HUES = [162, 55, 300, 205, 340, 110, 25, 240];
+export const bendColor = (i: number) => `oklch(0.63 0.16 ${BEND_HUES[i % BEND_HUES.length]})`;
+
+export interface PreviewMark {
+  at: [number, number];
+  level: 'error' | 'warn' | 'info';
+}
+
 export interface PartPreviewProps {
   preview?: Preview;
   size?: 'thumb' | 'large'; // thumb — 40×32 в таблице; large — на всю ширину, h-64
   showIgnored?: boolean;
   dims?: { w: number; h: number }; // подписи габарита (только large)
+  numbered?: boolean; // гибы разными цветами с номерами (только large)
+  notBends?: boolean; // линии, не засчитанные гибом, — серым с «×»
+  marks?: PreviewMark[]; // места ошибок и замечаний — кружками
   className?: string;
 }
 
-export function PartPreview({ preview, size = 'thumb', showIgnored = false, dims, className }: PartPreviewProps): ReactElement {
+export function PartPreview({ preview, size = 'thumb', showIgnored = false, dims, numbered = false, notBends = false, marks, className }: PartPreviewProps): ReactElement {
   const thumb = size === 'thumb';
   if (!preview || !preview.outer.length) {
     return (
@@ -34,15 +64,14 @@ export function PartPreview({ preview, size = 'thumb', showIgnored = false, dims
     );
   }
   let [x0, y0, x1, y1] = preview.bbox;
-  if (showIgnored && preview.ignored.length) {
-    for (const a of preview.ignored)
-      for (let i = 0; i < a.length; i += 2) {
-        x0 = Math.min(x0, a[i]);
-        x1 = Math.max(x1, a[i]);
-        y0 = Math.min(y0, a[i + 1]);
-        y1 = Math.max(y1, a[i + 1]);
-      }
-  }
+  const extra: number[][] = [...(showIgnored ? preview.ignored : []), ...(notBends ? (preview.notBends ?? []).map((n) => n.pts) : []), ...(marks ?? []).map((m) => m.at)];
+  for (const a of extra)
+    for (let i = 0; i + 1 < a.length; i += 2) {
+      x0 = Math.min(x0, a[i]);
+      x1 = Math.max(x1, a[i]);
+      y0 = Math.min(y0, a[i + 1]);
+      y1 = Math.max(y1, a[i + 1]);
+    }
   const w = Math.max(x1 - x0, 1);
   const h = Math.max(y1 - y0, 1);
   const pad = Math.max(w, h) * (thumb ? 0.04 : 0.07);
@@ -71,10 +100,54 @@ export function PartPreview({ preview, size = 'thumb', showIgnored = false, dims
             />
           ))}
         <path d={outerD} className="fill-metal/15 stroke-metal" strokeWidth={thumb ? 1 : 1.3} fillRule="evenodd" vectorEffect="non-scaling-stroke" />
-        {preview.bends.map((a, i) => (
-          <path key={'b' + i} d={path(a, false)} className="fill-none stroke-bend" strokeWidth={1.6} strokeDasharray="6 4" vectorEffect="non-scaling-stroke" />
-        ))}
+        {!thumb &&
+          notBends &&
+          (preview.notBends ?? []).map((n, i) => (
+            <path key={'n' + i} d={path(n.pts, false)} className="fill-none stroke-muted-foreground" strokeWidth={1.2} strokeDasharray="2 3" vectorEffect="non-scaling-stroke" />
+          ))}
+        {preview.bends.map((a, i) =>
+          numbered && !thumb ? (
+            <path key={'b' + i} d={path(a, false)} fill="none" stroke={bendColor(i)} strokeWidth={2.4} strokeDasharray="7 3" vectorEffect="non-scaling-stroke" />
+          ) : (
+            <path key={'b' + i} d={path(a, false)} className="fill-none stroke-bend" strokeWidth={1.6} strokeDasharray="6 4" vectorEffect="non-scaling-stroke" />
+          ),
+        )}
       </g>
+      {!thumb &&
+        numbered &&
+        preview.bends.map((a, i) => {
+          const [mx, my] = midOf(a);
+          return (
+            <g key={'bl' + i} aria-hidden>
+              <circle cx={mx} cy={-my} r={fs * 0.8} fill={bendColor(i)} />
+              <text x={mx} y={-my} textAnchor="middle" dominantBaseline="central" fill="white" style={{ fontSize: fs, fontWeight: 600 }}>
+                {i + 1}
+              </text>
+            </g>
+          );
+        })}
+      {!thumb &&
+        notBends &&
+        (preview.notBends ?? []).map((n, i) => {
+          const [mx, my] = midOf(n.pts);
+          return (
+            <text key={'nl' + i} x={mx} y={-my} textAnchor="middle" dominantBaseline="central" className="fill-muted-foreground" style={{ fontSize: fs * 1.1 }} aria-hidden>
+              ×
+            </text>
+          );
+        })}
+      {!thumb &&
+        marks?.map((m, i) => (
+          <circle
+            key={'m' + i}
+            cx={m.at[0]}
+            cy={-m.at[1]}
+            r={Math.max(w, h) * 0.03}
+            className={cn('fill-none', m.level === 'error' ? 'stroke-danger' : m.level === 'warn' ? 'stroke-warn' : 'stroke-muted-foreground')}
+            strokeWidth={2.2}
+            vectorEffect="non-scaling-stroke"
+          />
+        ))}
       {!thumb && dims && (
         <>
           <text x={x0 + w / 2} y={-y0 + pad * 0.85} className="fill-muted-foreground" textAnchor="middle" style={{ fontSize: fs }}>

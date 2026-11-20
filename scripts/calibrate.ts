@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { parseDxf } from '../src/core/dxf.ts';
 import { analyze, metricsOf } from '../src/core/geometry.ts';
 import { parseFileName } from '../src/core/materials.ts';
-import { computeOrder, DEFAULT_SETTINGS, type Position, type PriceBook, type Settings } from '../src/core/pricing.ts';
+import { computeOrder, DEFAULT_SETTINGS, fmtSheet, type Position, type PriceBook, type Settings } from '../src/core/pricing.ts';
 
 const ROOT = new URL('../../projects/', import.meta.url).pathname;
 const book: PriceBook = JSON.parse(readFileSync(new URL('../public/prices.json', import.meta.url), 'utf8'));
@@ -54,7 +54,7 @@ if (dir1 && existsSync(dir1)) {
       m.mat += p.sum.material;
       m.cut += p.sum.cut + p.sum.pierce;
     }
-    console.log(`   ${g.key.padEnd(12)} лист ${g.chosen.offer.w}×${g.chosen.offer.l}, листов ${g.chosen.sheetsCharged.toFixed(2)}, раскрой ${(g.chosen.nest.utilization * 100).toFixed(0)}%, ${g.chosen.offer.pricePerKg.toFixed(1)} ₽/кг`);
+    console.log(`   ${g.key.padEnd(12)} лист ${fmtSheet(g.chosen.offer.w, g.chosen.offer.l)}, листов ${g.chosen.sheetsCharged.toFixed(2)}, раскрой ${(g.chosen.nest.utilization * 100).toFixed(0)}%, ${g.chosen.offer.pricePerKg.toFixed(1)} ₽/кг`);
   }
   let sc = 0, sf = 0;
   for (const [k, [label, fact]] of Object.entries(inv)) {
@@ -84,7 +84,7 @@ if (dir1 && existsSync(dir1)) {
     console.log(`${p.name.padEnd(28)} шт: металл ${rub(x.piece.material)} рез ${rub(x.piece.cut + x.piece.pierce)} гиб ${rub(x.piece.bend)} = ${rub(x.piece.total)}  счёт ${rub(fact[i])} ${pct(x.piece.total, fact[i])}`);
   });
   const g = r.groups[0];
-  console.log(`   лист ${g.chosen.offer.w}×${g.chosen.offer.l} (${g.chosen.offer.source}), листов ${g.chosen.sheetsCharged.toFixed(2)}, ${g.chosen.offer.pricePerKg.toFixed(0)} ₽/кг`);
+  console.log(`   лист ${fmtSheet(g.chosen.offer.w, g.chosen.offer.l)} (${g.chosen.offer.source}), листов ${g.chosen.sheetsCharged.toFixed(2)}, ${g.chosen.offer.pricePerKg.toFixed(0)} ₽/кг`);
   console.log('ИТОГО'.padEnd(28), rub(r.totals.cost), 'счёт', rub(134010), pct(r.totals.cost, 134010));
   report.push(['П2 итого', r.totals.cost, 134010]);
 }
@@ -127,7 +127,7 @@ if (dir1 && existsSync(dir1)) {
     console.log(`${p.name.padEnd(28)} ${x.material.short.padEnd(9)} металл ${rub(x.piece.material)} рез ${rub(x.piece.cut + x.piece.pierce)} гиб ${rub(x.piece.bend)} = ${rub(x.piece.total)}  факт ${rub(rows[i][2])} ${pct(x.piece.total, rows[i][2])}${x.split ? `  [из ${x.split.pieces} частей]` : ''}`);
     report.push([`П4 ${p.name}`, x.piece.total, rows[i][2]]);
   });
-  for (const g of r.groups) console.log(`   ${g.key.padEnd(10)} лист ${g.chosen.offer.w}×${g.chosen.offer.l}, листов ${g.chosen.sheetsCharged.toFixed(2)}, раскрой ${(g.chosen.nest.utilization * 100).toFixed(0)}%, ${g.chosen.offer.pricePerKg.toFixed(1)} ₽/кг (${g.chosen.offer.source})`);
+  for (const g of r.groups) console.log(`   ${g.key.padEnd(10)} лист ${fmtSheet(g.chosen.offer.w, g.chosen.offer.l)}, листов ${g.chosen.sheetsCharged.toFixed(2)}, раскрой ${(g.chosen.nest.utilization * 100).toFixed(0)}%, ${g.chosen.offer.pricePerKg.toFixed(1)} ₽/кг (${g.chosen.offer.source})`);
   console.log('ИТОГО'.padEnd(28), rub(sc), 'факт', rub(sf), pct(sc, sf));
 }
 

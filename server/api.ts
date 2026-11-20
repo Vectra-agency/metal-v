@@ -1,5 +1,5 @@
-// HTTP API калькулятора: цены mc.ru (кэш в data/prices.json), ИИ-анализ заказа (server/ai.ts)
-// и история заказов (server/history.ts). Используется и dev-сервером Vite, и боевым server/index.ts;
+// HTTP API калькулятора: цены mc.ru (кэш в data/prices.json), ИИ-анализ заказа (server/ai.ts),
+// история заказов (server/history.ts) и доска задач (server/tasks.ts). Используется и dev-сервером Vite, и боевым server/index.ts;
 // вход по паролю проверяется раньше (server/auth.ts).
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { refreshPrices } from './mc.ts';
 import { aiStatus, cancelJob, createJob, getJob, putImage } from './ai.ts';
 import { handleHistory } from './history.ts';
+import { handleTasks } from './tasks.ts';
 import { clientIp, HttpError, parseJson, readRaw, send, sendEmpty } from './http.ts';
 import { AI_LIMITS } from '../src/core/ai.ts';
 import { MATERIAL_BY_ID } from '../src/core/materials.ts';
@@ -148,6 +149,10 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse): Prom
     }
     if (url.pathname === '/api/history' || url.pathname.startsWith('/api/history/')) {
       await handleHistory(req, res, url.pathname);
+      return true;
+    }
+    if (url.pathname === '/api/tasks' || url.pathname.startsWith('/api/tasks/')) {
+      await handleTasks(req, res, url);
       return true;
     }
     send(res, 404, { error: 'Нет такого метода' });

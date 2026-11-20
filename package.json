@@ -14,6 +14,8 @@
     "check-invoices": "node scripts/check-invoices.ts",
     "test-history": "node scripts/test-history.ts",
     "seed-history": "node scripts/seed-history.ts",
+    "test-tasks": "node scripts/test-tasks.ts",
+    "tasks": "node scripts/tasks.ts",
     "analyze": "node scripts/analyze.ts",
     "analyze-pdf": "node scripts/analyze-pdf.ts"
   },

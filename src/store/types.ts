@@ -69,7 +69,7 @@ export interface PipelineSlice {
   runId: number;
 }
 
-export type SheetFocus = 'dims' | 'material' | 'thickness' | 'qty' | 'bends' | 'extras' | 'variant' | 'ai' | 'history';
+export type SheetFocus = 'dims' | 'material' | 'thickness' | 'qty' | 'bends' | 'extras' | 'variant' | 'ai' | 'history' | 'dxf' | 'bendlines';
 export type RequestSection = 'stages' | 'request' | 'documents' | 'missing' | 'journal';
 export type SettingsTab = 'cut' | 'bend' | 'mat' | 'nest' | 'extra' | 'quote';
 export type SheetState =

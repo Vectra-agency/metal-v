@@ -1,4 +1,5 @@
 // Простые синхронные действия (ui-spec §4.5, P0): правка заказа и позиций, расценки, настройки КП, интерфейс.
+import { toast } from 'sonner';
 import { effectivePositions, manualEdit } from '../ai/apply.ts';
 import type { SheetPolicy } from '../core/materials.ts';
 import { MATERIAL_BY_ID } from '../core/materials.ts';
@@ -45,6 +46,15 @@ function editIn(o: Order, id: string, patch: Partial<OrderPosition>): Order {
 /** Все правки позиций — только здесь: значение пишется в базовую позицию, ИИ-предложение по полю снимается */
 export function editPosition(id: string, patch: Partial<OrderPosition>): void {
   setOrder((o) => editIn(o, id, patch));
+}
+
+/** «Считать как есть»: DXF с ошибкой всё-таки посчитать (ошибки остаются видны в карточке); false — снова не считать */
+export function acceptDxf(id: string, accepted = true): void {
+  editPosition(id, { dxfAccepted: accepted || undefined });
+  if (accepted)
+    toast('Файл с ошибкой посчитан как есть — проверьте цену позиции', {
+      action: { label: 'Отменить', onClick: () => editPosition(id, { dxfAccepted: undefined }) },
+    });
 }
 
 type BulkPatch = Pick<Partial<OrderPosition>, 'materialId' | 'thickness' | 'bends' | 'qty' | 'disabled'>;

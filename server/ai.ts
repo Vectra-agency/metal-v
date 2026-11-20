@@ -728,6 +728,9 @@ function mockReply(ctx: AiContext, attempt: number): string {
         ? [{ id: last.id, status: 'check', comment: '', operations: [], suggestions: [{ kind: 'disable', reason: 'заглушка: проверка предложения «Исключить из расчёта»', ...nil }] }]
         : []),
     ],
+    bends: ctx.positions
+      .filter((x) => !x.disabled && (x.bends > 0 || x.detectedBends > 0))
+      .map((x) => ({ id: x.id, reasoning: `Заглушка: в расчёте ${x.bends}, ${x.bendsFrom ?? 'линий гиба в файле нет'}.`, count: x.detectedBends || x.bends })),
     questions: ['Тестовый вопрос клиенту?'],
     risks: [],
     recommendations: [],
@@ -757,7 +760,7 @@ async function analyzePrompt(ctx: AiContext, prompt: Prompt, signal: AbortSignal
         { role: 'assistant', content: first.content.slice(0, 60_000) },
         {
           role: 'user',
-          content: `Твой ответ выше — не корректный JSON (${why}). Верни только корректный JSON по схеме: один объект с полями summary, confidence, positions, questions, risks, recommendations, без текста до и после и без \`\`\`.${cutOff ? ' Ответ не поместился — сократи: комментарии до 200 символов, только позиции с замечаниями.' : ''}`,
+          content: `Твой ответ выше — не корректный JSON (${why}). Верни только корректный JSON по схеме: один объект с полями summary, confidence, positions, bends, questions, risks, recommendations, без текста до и после и без \`\`\`.${cutOff ? ' Ответ не поместился — сократи: комментарии до 200 символов, только позиции с замечаниями.' : ''}`,
         },
       ],
       signal,

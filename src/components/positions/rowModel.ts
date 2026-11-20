@@ -6,7 +6,7 @@ import type { AttentionItem, AttentionKind } from '@/attention.ts';
 import type { AiPositionReview, AiState, AiSuggestion } from '@/core/ai.ts';
 import type { PosResult } from '@/core/pricing.ts';
 import type { Order, OrderPosition } from '@/order.ts';
-import type { QuoteLine } from '@/quote.ts';
+import { isUnpriced, type QuoteLine } from '@/quote.ts';
 import type { Derived } from '@/store/derived.tsx';
 import { memo2 } from '@/store/memo.ts';
 import type { AppState, SortKey, TableFilter, UiState } from '@/store/types.ts';
@@ -96,7 +96,7 @@ function changesOf(base: OrderPosition, ai: AiState | undefined): AiChange[] {
   return v;
 }
 
-export const isUnpriced = (p: OrderPosition): boolean => !p.disabled && p.qty > 0 && (p.geom.netArea <= 0 || p.geom.cutLength <= 0);
+export { isUnpriced };
 
 // ---------- строки ----------
 

@@ -4,6 +4,7 @@ import type { ReactElement } from 'react';
 import { useDerived } from '@/store/derived.tsx';
 import { GroupCard } from './GroupCard.tsx';
 import { MaterialSummary } from './MaterialSummary.tsx';
+import { SheetList } from './SheetList.tsx';
 
 export function MetalTab(): ReactElement {
   const { res, byId } = useDerived();
@@ -13,9 +14,10 @@ export function MetalTab(): ReactElement {
   return (
     <div className="flex flex-col gap-4">
       <p className="max-w-4xl text-xs text-muted-foreground">
-        Детали одного материала и толщины укладываются на листы по габаритам (оценка сверху — реальный раскрой по контуру плотнее). Стоимость металла группы делится
-        между деталями пропорционально габаритной площади.
+        Детали одного материала и толщины укладываются на листы (рулон — на полосу) по габаритам (оценка сверху — реальный раскрой по контуру плотнее). Стоимость
+        металла группы делится между деталями пропорционально габаритной площади.
       </p>
+      <SheetList res={res} />
       <MaterialSummary res={res} />
       <div className="grid gap-4 2xl:grid-cols-2">
         {res.groups.map((g) => (

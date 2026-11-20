@@ -1,4 +1,5 @@
-// Шапка (ui-spec §2.2): марка, название заказа, этапы, «Добавить», «Скопировать для клиента», печать КП, «История», «Расценки», «Ещё».
+// Шапка (ui-spec §2.2): марка, название заказа, этапы, «Добавить», «Скопировать для клиента», печать КП, «История», «Задачи»,
+// «Расценки», «Ещё».
 // Узкий экран (< 768 px): без марки, название на всю ширину, «+» и «Ещё» (в нём же копирование, печать, расценки);
 // этапы — второй строкой. Высота шапки → --header-h (по ней липнет полоса вкладок).
 import { useEffect, useRef, type ReactElement } from 'react';
@@ -29,15 +30,16 @@ import { startNewOrder } from '@/store/pipelineActions.ts';
 import { copyForClient, downloadInternalCsv, printClient, printInternal } from '@/store/quoteActions.ts';
 import { useStore } from '@/store/store.ts';
 import type { AppState } from '@/store/types.ts';
-import { FileText, Keyboard, LogOut, SunMoon } from 'lucide-react';
+import { FileText, Keyboard, LogOut, SquareKanban, SunMoon } from 'lucide-react';
 import { logout } from '@/history/api.ts';
 import { openHistory } from '@/store/historyActions.ts';
+import { goTasks } from '@/tasks/store.ts';
 import { AddFilesMenu } from './AddFilesMenu.tsx';
 import { FilePickers } from './FilePickers.tsx';
 import { StagePills } from './StagePills.tsx';
 import { MOD } from './useShortcuts.ts';
 
-function Brand(): ReactElement {
+export function Brand(): ReactElement {
   return (
     <div className="flex shrink-0 items-center gap-2">
       <svg width="26" height="26" viewBox="0 0 32 32" aria-hidden className="fill-metal">
@@ -70,12 +72,15 @@ const blankOrder = (o: Order): boolean => !o.positions.length && !(o.documents ?
 
 /** История — только с сервером (в статической версии её нет) */
 const historyEnabled = (s: AppState): boolean => s.prices.live && s.history.available !== false;
+/** Доска задач — тоже только с сервером */
+const tasksEnabled = (s: AppState): boolean => s.prices.live;
 
 function MoreMenu({ compact }: { compact: boolean }): ReactElement {
   const empty = useStore((s) => !s.order.positions.length);
   const blank = useStore((s) => blankOrder(s.order));
   const auth = useStore((s) => s.history.auth.enabled);
   const historyOn = useStore(historyEnabled);
+  const tasksOn = useStore(tasksEnabled);
   const { theme, setTheme } = useTheme();
   return (
     <DropdownMenu>
@@ -108,6 +113,12 @@ function MoreMenu({ compact }: { compact: boolean }): ReactElement {
               <DropdownMenuItem onSelect={() => openHistory()}>
                 <History aria-hidden />
                 История заказов
+              </DropdownMenuItem>
+            )}
+            {tasksOn && (
+              <DropdownMenuItem onSelect={() => goTasks()}>
+                <SquareKanban aria-hidden />
+                Задачи и доработки
               </DropdownMenuItem>
             )}
             <DropdownMenuSeparator />
@@ -175,6 +186,7 @@ export function Header(): ReactElement {
   const empty = useStore((s) => !s.order.positions.length);
   const pills = useStore((s) => s.pipeline.processing || s.order.positions.length > 0);
   const historyOn = useStore(historyEnabled);
+  const tasksOn = useStore(tasksEnabled);
   const compact = !useMediaQuery('(min-width: 768px)');
   const ref = useRef<HTMLElement>(null);
 
@@ -226,6 +238,14 @@ export function Header(): ReactElement {
                 <Button variant="ghost" aria-label="История заказов" className="shrink-0 max-xl:px-2" onClick={() => openHistory()}>
                   <History data-icon="inline-start" />
                   <span className="max-xl:sr-only">История</span>
+                </Button>
+              </Hinted>
+            )}
+            {tasksOn && (
+              <Hinted hint="Задачи и доработки сервиса: доска для людей и ИИ-агентов">
+                <Button variant="ghost" aria-label="Задачи и доработки" className="shrink-0 max-xl:px-2" onClick={() => goTasks()}>
+                  <SquareKanban data-icon="inline-start" />
+                  <span className="max-xl:sr-only">Задачи</span>
                 </Button>
               </Hinted>
             )}

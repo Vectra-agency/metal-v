@@ -6,6 +6,7 @@ import { isEditable } from '@/components/common/dom.ts';
 import { openDialog, setTab } from '@/store/actions.ts';
 import { printClient } from '@/store/quoteActions.ts';
 import { getState, selectView } from '@/store/store.ts';
+import { getTasks } from '@/tasks/store.ts';
 import { openFilePicker } from './FilePickers.tsx';
 
 export const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/i.test(navigator.platform || navigator.userAgent);
@@ -30,7 +31,7 @@ const modalOpen = (): boolean => {
 export function useShortcuts(): void {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.defaultPrevented || e.isComposing) return;
+      if (e.defaultPrevented || e.isComposing || getTasks().screen === 'tasks') return; // у доски свои клавиши
       const mod = IS_MAC ? e.metaKey : e.ctrlKey;
       if (mod && !e.altKey && !e.shiftKey && (e.code === 'KeyO' || e.key.toLowerCase() === 'o')) {
         e.preventDefault(); // и при удержании: браузерное «Открыть файл» не нужно

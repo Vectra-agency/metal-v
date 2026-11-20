@@ -4,7 +4,8 @@
 // шаблоны текста и таблицы (ui-spec §7.2).
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { computeOrder, DEFAULT_SETTINGS, type PriceBook, type Settings } from '../src/core/pricing.ts';
+import { getMaterial, kgPerM2 } from '../src/core/materials.ts';
+import { computeOrder, DEFAULT_SETTINGS, fmtSheet, normalizeSheetRules, sheetRuleFor, type PriceBook, type Settings } from '../src/core/pricing.ts';
 import { internalCsv } from '../src/exportCsv.ts';
 import { amountInWords, integerInWords } from '../src/numberWords.ts';
 import { emptyOrder, manualPosition, orderSettings, type Order, type OrderPosition } from '../src/order.ts';
@@ -419,6 +420,98 @@ test('внутренний CSV: заголовок, позиции с ценой
   assert.equal(rows.filter((r) => /^\d+;/.test(r)).length, res.positions.size);
   assert.ok(rows.some((r) => r.startsWith(';"ИТОГО (с НДС)";')));
   assert.ok(rows.some((r) => r.startsWith(';"Цена клиенту в КП (цена за шт округлена)";')));
+});
+
+// ---------- листы металла по правилам: до 3 мм — рулон 1500, толще — лист 1500×3000 ----------
+
+const item = (t: number, w: number, l: number, pricePerKg: number) => ({ t, w, l, pricePerKg, name: `лист ${t}х${w}х${l}`, mark: 'Ст3' });
+/** Свой справочник: Ст3 2 мм — 1250×2500 по 70 и 1500×3000 по 60; 5 мм — только 1500×6000 по 80; 4 мм — 1500×3000 и 1500×6000 */
+const ruleBook: PriceBook = {
+  updatedAt: '2026-11-20T00:00:00Z',
+  region: 'spb',
+  materials: {
+    st3: [item(2, 1250, 2500, 70), item(2, 1500, 3000, 60), item(5, 1500, 6000, 80), item(4, 1500, 3000, 75), item(4, 1500, 6000, 74)],
+    amg2: [item(2, 1500, 3000, 600)],
+  },
+};
+const groupOf = (positions: OrderPosition[], s: Settings = settings) => computeOrder(positions, ruleBook, s).groups[0];
+
+test('листы: до 3 мм — рулон 1500 по правилу, ₽/кг как у листа той же ширины, металл — вся ширина × размотка', () => {
+  const g = groupOf([plate('А', 'st3', 2, 10, 600, 400)]);
+  assert.equal(fmtSheet(g.chosen.offer.w, g.chosen.offer.l), 'рулон 1500');
+  assert.ok(g.chosen.offer.coil && g.chosen.offer.rule && g.autoChosen);
+  assert.match(g.autoWhy, /по правилу: до 3 мм — рулон 1500/);
+  assert.equal(g.chosen.offer.pricePerKg, 60, 'цена рулона — как у 1500×3000, не у 1250×2500');
+  assert.match(g.chosen.offer.note, /рулон 1500 — ₽\/кг как у листа 1500×3000/);
+  const m = g.chosen.coilM!;
+  assert.ok(m > 0.8 && m < 3, `размотка ${m} м`);
+  if (!g.chosen.capped) assert.ok(Math.abs(g.materialCost - m * 1.5 * kgPerM2(getMaterial('st3'), 2) * 60) < 0.01);
+  assert.equal(g.chosen.sheetsCharged, g.chosen.capped ? g.chosen.sheetsCharged : m, 'для рулона в расчёте — метры');
+});
+
+test('листы: 4 мм и 3,5 мм — лист 1500×3000 по правилу; нет такого формата на mc.ru — ₽/кг этой толщины', () => {
+  const g4 = groupOf([plate('Б', 'st3', 4, 4, 900, 500)]);
+  assert.equal(fmtSheet(g4.chosen.offer.w, g4.chosen.offer.l), '1500×3000');
+  assert.ok(g4.chosen.offer.rule && !g4.chosen.offer.coil);
+  assert.equal(g4.chosen.offer.pricePerKg, 75, 'формат есть на mc.ru — его цена, хотя 1500×6000 дешевле за кг');
+  assert.match(g4.autoWhy, /толще 3 мм — лист 1500×3000/);
+  const g35 = groupOf([plate('В', 'st3', 3.5, 4, 900, 500)]);
+  assert.equal(fmtSheet(g35.chosen.offer.w, g35.chosen.offer.l), '1500×3000', '3,5 мм — уже лист');
+  const g5 = groupOf([plate('Г', 'st3', 5, 4, 900, 500)]);
+  assert.equal(fmtSheet(g5.chosen.offer.w, g5.chosen.offer.l), '1500×3000');
+  assert.equal(g5.chosen.offer.pricePerKg, 80);
+  assert.equal(g5.chosen.offer.source, 'mc');
+  assert.match(g5.chosen.offer.note, /нет 1500×3000 на mc\.ru — ₽\/кг как у 1500×6000/);
+  assert.ok(g5.options.some((o) => fmtSheet(o.offer.w, o.offer.l) === '1500×6000'), 'форматы mc.ru остаются для ручного выбора');
+});
+
+test('листы: деталь длиннее 3000 мм — авто берёт лист, куда она влезает целиком, и объясняет почему', () => {
+  const g = groupOf([plate('Д', 'st3', 5, 2, 4000, 500)]);
+  assert.equal(fmtSheet(g.chosen.offer.w, g.chosen.offer.l), '1500×6000');
+  assert.match(g.autoWhy, /по правилу толще 3 мм — лист 1500×3000, но деталь туда целиком не влезает — взят 1500×6000/);
+  assert.equal(Object.keys(g.chosen.splits).length, 0);
+});
+
+test('листы: ручной выбор — лист вместо рулона; формата нет среди вариантов — авто', () => {
+  const s1: Settings = { ...settings, sheetChoice: { 'st3|2': '1250×2500' } };
+  const g1 = groupOf([plate('А', 'st3', 2, 10, 600, 400)], s1);
+  assert.equal(fmtSheet(g1.chosen.offer.w, g1.chosen.offer.l), '1250×2500');
+  assert.ok(!g1.autoChosen && g1.auto.offer.coil);
+  const s2: Settings = { ...settings, sheetChoice: { 'st3|4': '1500×6000' } };
+  const g2 = groupOf([plate('Б', 'st3', 4, 4, 900, 500)], s2);
+  assert.equal(fmtSheet(g2.chosen.offer.w, g2.chosen.offer.l), '1500×6000');
+  assert.ok(!g2.autoChosen);
+  // рулон — вариант только там, где его даёт правило (до 3 мм); для 4 мм выбора «рулон 1500» нет — остаётся авто
+  const s3: Settings = { ...settings, sheetChoice: { 'st3|4': 'рулон 1500' } };
+  const g3 = groupOf([plate('Б', 'st3', 4, 4, 900, 500)], s3);
+  assert.ok(g3.autoChosen && !g3.options.some((o) => o.offer.coil));
+});
+
+test('листы: рулон для «целыми листами» (алюминий) — тоже по длине размотки, потолок — свой', () => {
+  const g = groupOf([plate('Е', 'amg2', 2, 3, 500, 300)]);
+  assert.equal(g.policy, 'whole');
+  assert.ok(g.chosen.offer.coil);
+  const sheet = g.options.find((o) => !o.offer.coil)!;
+  assert.ok(g.materialCost < sheet.materialCost, 'кусок рулона дешевле целого листа 1500×3000');
+});
+
+test('листы: деталь шире рулона в обе стороны — из частей; правила из файла и битые правила', () => {
+  const g = groupOf([plate('Ж', 'st3', 2, 1, 2000, 1600)]);
+  assert.ok(g.chosen.offer.coil);
+  assert.equal(Object.keys(g.chosen.splits).length, 1);
+  assert.deepEqual(normalizeSheetRules(undefined), [
+    { upTo: 3, w: 1500, l: null },
+    { upTo: null, w: 1500, l: 3000 },
+  ]);
+  assert.deepEqual(normalizeSheetRules([{ upTo: 3, w: 0, l: null }]), normalizeSheetRules(undefined), 'битые — по умолчанию');
+  // без «толще»: последнее правило действует и дальше; порядок — по толщине
+  assert.deepEqual(normalizeSheetRules([{ upTo: 6, w: 1500, l: 6000 }, { upTo: 2, w: 1250, l: 2500 }]), [
+    { upTo: 2, w: 1250, l: 2500 },
+    { upTo: null, w: 1500, l: 6000 },
+  ]);
+  const custom = { sheetRules: [{ upTo: 2, w: 1250, l: 2500 }, { upTo: null, w: 1500, l: null }] };
+  assert.deepEqual(sheetRuleFor(custom, 3), { upTo: null, w: 1500, l: null });
+  assert.deepEqual(sheetRuleFor(custom, 2), { upTo: 2, w: 1250, l: 2500 });
 });
 
 console.log(`\n${passed} прошло, ${failed.length} не прошло`);

@@ -5,3 +5,5 @@ public/_samples/
 .env
 .env.*
 !.env.example
+.tasks/
+.claude/worktrees/

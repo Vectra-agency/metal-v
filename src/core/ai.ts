@@ -106,6 +106,9 @@ export interface AiPosition {
   bends: number; // гибов на 1 шт (в расчёте)
   detectedBends: number; // линий гиба найдено в файле (в DXF их обычно нет — тогда 0)
   bendLengthMm: number;
+  bendsFrom?: string; // откуда число гибов: «линии гиба в DXF», «линии гиба на чертеже PDF», «с исполнения …», «вручную»
+  bendLines?: string[]; // найденные линии гиба: «1: 394 мм — штриховая поперёк всей детали…»
+  notBendLines?: string[]; // линии, которые гибом не засчитаны, и почему (до 5)
   extras: { label: string; perPiece: number }[]; // доп. работы, уже введённые вручную
   massKg: number; // масса 1 шт по контуру
   massCheck?: { drawingKg: number | null; status: 'ok' | 'warn' | 'bad' | 'unknown' }; // сверка с массой на чертеже
@@ -208,10 +211,18 @@ export interface AiPositionReview {
   suggestions: AiSuggestion[];
 }
 
+/** Сколько гибов у детали по мнению ИИ и на чём это основано — по каждой гнутой позиции, даже если с расчётом совпадает */
+export interface AiBendReview {
+  id: string; // AiPosition.id
+  count: number | null; // гибов на 1 шт по чертежу; null — по данным не определить
+  reasoning: string; // что видно: полки на виде, линии сгиба, текст чертежа; почему линия — гиб или нет
+}
+
 export interface AiAnalysis {
   summary: string; // 2–5 предложений о заказе
   confidence: 'high' | 'medium' | 'low';
   positions: AiPositionReview[]; // только позиции, по которым есть что сказать; остальные — ok
+  bends?: AiBendReview[]; // разбор гибов по гнутым позициям (в анализах до 11.2026 нет)
   questions: string[]; // что уточнить у клиента
   risks: string[];
   recommendations: string[]; // как удешевить / что проверить
@@ -227,7 +238,7 @@ export interface AiAnalysis {
 export const AI_RESPONSE_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['summary', 'confidence', 'positions', 'questions', 'risks', 'recommendations'],
+  required: ['summary', 'confidence', 'positions', 'bends', 'questions', 'risks', 'recommendations'],
   properties: {
     summary: { type: 'string' },
     confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
@@ -258,6 +269,19 @@ export const AI_RESPONSE_SCHEMA = {
               },
             },
           },
+        },
+      },
+    },
+    bends: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['id', 'reasoning', 'count'],
+        properties: {
+          id: { type: 'string' },
+          reasoning: { type: 'string' },
+          count: { type: ['integer', 'null'] },
         },
       },
     },

@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs.t
 import { isEditable } from '@/components/common/dom.ts';
 import { MATERIAL_BY_ID, type SheetPolicy } from '@/core/materials.ts';
 import { normalizeCutRows } from '@/core/cutPrice.ts';
-import { DEFAULT_SETTINGS, type ExtraRate, type Settings } from '@/core/pricing.ts';
+import { DEFAULT_SETTINGS, normalizeSheetRules, type ExtraRate, type Settings } from '@/core/pricing.ts';
 import { DEFAULT_QUOTE, type PieceRounding, type QuoteSettings } from '@/quote.ts';
 import { closeSheet, openSheet, resetSettings, setQuoteSettings, setSettings } from '@/store/actions.ts';
 import { getState, useStore } from '@/store/store.ts';
@@ -64,6 +64,7 @@ const FIELD_NAME: Record<string, string> = {
   policy: 'Списание металла',
   priceOverride: 'Цена металла, ₽/кг',
   sheetChoice: 'Выбор листа',
+  sheetRules: 'Листы металла',
   matK: 'Множители материалов',
   extraRates: 'Доп. операции',
   quote: 'Настройки КП',
@@ -147,6 +148,16 @@ export function parseSettingsFile(text: string): { settings: Settings; quote: Qu
   if ('sheetChoice' in j) {
     if (!isObj(j.sheetChoice) || !Object.values(j.sheetChoice).every((v) => typeof v === 'string')) bad('sheetChoice');
     s.sheetChoice = { ...(j.sheetChoice as Record<string, string>) };
+  }
+  if ('sheetRules' in j) {
+    const v = j.sheetRules;
+    const ok =
+      Array.isArray(v) &&
+      v.length > 0 &&
+      v.length <= MAX_ROWS &&
+      v.every((r) => isObj(r) && isNum(r.w) && r.w > 0 && (r.l == null || (isNum(r.l) && r.l > 0)) && (r.upTo == null || (isNum(r.upTo) && r.upTo > 0)));
+    if (!ok) bad('sheetRules');
+    s.sheetRules = normalizeSheetRules(v);
   }
   if ('matK' in j) {
     if (!isObj(j.matK)) bad('matK');

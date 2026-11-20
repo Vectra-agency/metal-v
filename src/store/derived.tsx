@@ -8,7 +8,7 @@ import type { AiContext } from '../core/ai.ts';
 import { computeOrder, type OrderResult, type PriceBook, type Settings } from '../core/pricing.ts';
 import { orderSettings, type Order, type OrderPosition } from '../order.ts';
 import { aiOutdated } from '../pipeline.ts';
-import { buildQuote, pricedPositions, type Quote, type QuoteSettings } from '../quote.ts';
+import { buildQuote, isUnpriced, pricedPositions, type Quote, type QuoteSettings } from '../quote.ts';
 import { memo2, memoBy } from './memo.ts';
 import { getState, useStore } from './store.ts';
 import type { AppState, PriceIssue } from './types.ts';
@@ -74,7 +74,7 @@ const changesMemo = memo2((positions: OrderPosition[], ai: Order['ai']) => {
 });
 const unpricedMemo = memo2((positions: OrderPosition[]) => {
   const out = new Set<string>();
-  for (const p of positions) if (!p.disabled && p.qty > 0 && (p.geom.netArea <= 0 || p.geom.cutLength <= 0)) out.add(p.id);
+  for (const p of positions) if (isUnpriced(p)) out.add(p.id);
   return out;
 });
 

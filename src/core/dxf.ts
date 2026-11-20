@@ -1,6 +1,7 @@
 // Минимальный парсер ASCII DXF (R12…2018) для задач раскроя.
 // Отдаёт примитивы в мировых координатах уже «расплющенными» в полилинии
-// с точной длиной, плюс позиции текстов (по ним отсеиваем рамки и штампы).
+// с точной длиной, плюс позиции текстов (по ним отсеиваем рамки и штампы)
+// и сведения для проверки файла (stats): единицы, плоскость, лист, картинки, заливки, мусор.
 
 export interface Vec {
   x: number;
@@ -14,6 +15,7 @@ export interface Prim {
   kind: string; // LINE / ARC / CIRCLE / LWPOLYLINE / SPLINE …
   layer: string;
   dashed: boolean;
+  ltype: string; // тип линии (после BYLAYER/BYBLOCK): CONTINUOUS, CENTER, PHANTOM, DASHED…
 }
 
 /** Строка TEXT/MTEXT/ATTRIB как в файле (коды MTEXT не очищены) — для текста чертежа в ИИ-анализе */
@@ -23,14 +25,44 @@ export interface DxfLabel {
   str: string;
 }
 
+/** Что в файле мешает резке или расчёту — для проверки DXF (src/core/dxfCheck.ts) */
+export interface DxfStats {
+  units: string | null; // «сантиметрах» — чертёж был не в мм и пересчитан; null — мм или не задано
+  zMin: number; // Z геометрии модели (Infinity, если геометрии нет)
+  zMax: number;
+  tilted: number; // объектов не в плоскости XY (ось выдавливания не Z)
+  paper: number; // объектов геометрии на листе (Layout) — в расчёт не идут
+  images: number; // растровые картинки (IMAGE)
+  fills: Vec[]; // штриховки и заливки (HATCH, SOLID, TRACE) — точка привязки
+  points: number; // объекты POINT
+  zeroLength: number; // отрезки нулевой длины, окружности и дуги нулевого радиуса
+  tiny: number; // кусков геометрии короче 0,1 мм
+  splines: number;
+  dims: number; // размеры (DIMENSION)
+}
+
 export interface DxfDrawing {
   prims: Prim[];
   texts: Vec[];
   version: string;
-  insUnits: number; // $INSUNITS: 4 = мм, 1 = дюймы, 0 = не задано
+  insUnits: number; // $INSUNITS: 4 = мм, 1 = дюймы, 5 = см, 6 = м, 0 = не задано
   warnings: string[];
   labels?: DxfLabel[];
+  stats?: DxfStats;
 }
+
+/** $INSUNITS → мм в единице и как сказать «чертёж в …» */
+const UNITS: Record<number, [number, string]> = {
+  1: [25.4, 'дюймах'],
+  2: [304.8, 'футах'],
+  5: [10, 'сантиметрах'],
+  6: [1000, 'метрах'],
+  8: [0.0000254, 'микродюймах'],
+  9: [0.0254, 'милах'],
+  10: [914.4, 'ярдах'],
+  13: [0.001, 'микронах'],
+  14: [100, 'дециметрах'],
+};
 
 type Pair = [number, string];
 
@@ -344,8 +376,8 @@ function polyLen(pts: Vec[]): number {
 // ---------- обход сущностей ----------
 
 const SKIP = new Set([
-  'DIMENSION', 'HATCH', 'SOLID', 'POINT', 'ATTRIB', 'ATTDEF', 'LEADER', 'MLEADER', 'MULTILEADER',
-  'VIEWPORT', 'IMAGE', 'WIPEOUT', '3DFACE', 'REGION', '3DSOLID', 'BODY', 'TOLERANCE', 'OLE2FRAME',
+  'ATTRIB', 'ATTDEF', 'LEADER', 'MLEADER', 'MULTILEADER',
+  'VIEWPORT', 'WIPEOUT', '3DFACE', 'REGION', '3DSOLID', 'BODY', 'TOLERANCE', 'OLE2FRAME',
   'XLINE', 'RAY', 'TRACE', 'MESH', 'SURFACE',
 ]);
 
@@ -360,11 +392,29 @@ export function parseDxf(buf: ArrayBuffer): DxfDrawing {
   const insUnits = parseInt(P.header.get('$INSUNITS') ?? '0', 10) || 0;
 
   const isDashed = (lt: string) => P.dashedLtypes.has(lt.toUpperCase());
+  const stats: DxfStats = { units: null, zMin: Infinity, zMax: -Infinity, tilted: 0, paper: 0, images: 0, fills: [], points: 0, zeroLength: 0, tiny: 0, splines: 0, dims: 0 };
+  const GEOM = new Set(['LINE', 'CIRCLE', 'ARC', 'ELLIPSE', 'LWPOLYLINE', 'POLYLINE', 'SPLINE']);
+  /** Z объекта: все координаты Z (30, 31, 38 — высота полилинии) и Z вставки блока */
+  const zOf = (e: Rec, zOff: number) => {
+    for (const [code, val] of e.pairs) {
+      if (code === 30 || code === 31 || code === 38) {
+        const z = parseFloat(val) + zOff;
+        if (Number.isFinite(z)) {
+          if (z < stats.zMin) stats.zMin = z;
+          if (z > stats.zMax) stats.zMax = z;
+        }
+      }
+    }
+    for (const v of e.children ?? []) zOf(v, zOff);
+  };
 
-  const walk = (ents: Rec[], M: Mat, parentLayer: string, parentLt: string, depth: number) => {
+  const walk = (ents: Rec[], M: Mat, parentLayer: string, parentLt: string, depth: number, zOff = 0) => {
     if (depth > 12) return;
     for (const e of ents) {
-      if (num(e, 67, 0) === 1) continue; // пространство листа
+      if (num(e, 67, 0) === 1) {
+        if (GEOM.has(e.type) || e.type === 'INSERT') stats.paper++;
+        continue; // пространство листа
+      }
       let layer = str(e, 8, '0');
       if (layer === '0' && depth > 0) layer = parentLayer;
       const li = P.layers.get(layer);
@@ -375,11 +425,16 @@ export function parseDxf(buf: ArrayBuffer): DxfDrawing {
       else if (/^byblock$/i.test(lt)) lt = parentLt;
       const dashed = isDashed(lt);
       const ez = extrusionZ(e);
+      if (GEOM.has(e.type)) {
+        zOf(e, zOff);
+        if (Math.abs(ez) < 0.999999) stats.tilted++; // ось выдавливания не по Z — объект не в плоскости чертежа
+      }
       // OCS с осью -Z: зеркалим X
       const O: Mat = ez < 0 ? mul(M, { a: -1, b: 0, c: 0, d: 1, e: 0, f: 0 }) : M;
       const sc = lenScale(M);
       const push = (kind: string, pts: Vec[], length: number, closed: boolean, m: Mat) => {
-        prims.push({ kind, pts: pts.map((p) => apply(m, p)), length: length * sc, closed, layer, dashed });
+        if (length * sc < 0.1) stats.tiny++;
+        prims.push({ kind, pts: pts.map((p) => apply(m, p)), length: length * sc, closed, layer, dashed, ltype: lt.toUpperCase() });
       };
 
       switch (e.type) {
@@ -388,11 +443,15 @@ export function parseDxf(buf: ArrayBuffer): DxfDrawing {
           const b = { x: num(e, 11), y: num(e, 21) };
           const l = Math.hypot(b.x - a.x, b.y - a.y);
           if (l > 1e-9) push('LINE', [a, b], l, false, M);
+          else stats.zeroLength++;
           break;
         }
         case 'CIRCLE': {
           const r = num(e, 40);
-          if (r <= 0) break;
+          if (r <= 0) {
+            stats.zeroLength++;
+            break;
+          }
           const pts = arcPoints(num(e, 10), num(e, 20), r, 0, 2 * Math.PI, sc);
           pts[pts.length - 1] = pts[0];
           push('CIRCLE', pts, 2 * Math.PI * r, true, O);
@@ -404,7 +463,10 @@ export function parseDxf(buf: ArrayBuffer): DxfDrawing {
           let a1 = (num(e, 51) * Math.PI) / 180;
           while (a1 <= a0) a1 += 2 * Math.PI;
           const sweep = a1 - a0;
-          if (r <= 0) break;
+          if (r <= 0) {
+            stats.zeroLength++;
+            break;
+          }
           push('ARC', arcPoints(num(e, 10), num(e, 20), r, a0, sweep, sc), r * sweep, false, O);
           break;
         }
@@ -456,6 +518,7 @@ export function parseDxf(buf: ArrayBuffer): DxfDrawing {
           break;
         }
         case 'SPLINE': {
+          stats.splines++;
           const degree = num(e, 71, 3);
           const knots: number[] = [];
           const ctrl: Vec[] = [];
@@ -526,11 +589,25 @@ export function parseDxf(buf: ArrayBuffer): DxfDrawing {
               const B: Mat = { a: 1, b: 0, c: 0, d: 1, e: -blk.base.x, f: -blk.base.y };
               let L = mul(T, B);
               if (ez < 0) L = mul({ a: -1, b: 0, c: 0, d: 1, e: 0, f: 0 }, L);
-              walk(blk.ents, mul(M, L), layer, lt, depth + 1);
+              walk(blk.ents, mul(M, L), layer, lt, depth + 1, zOff + num(e, 30));
             }
           }
           break;
         }
+        case 'HATCH':
+        case 'SOLID':
+        case 'TRACE':
+          stats.fills.push(apply(M, { x: num(e, 10), y: num(e, 20) }));
+          break;
+        case 'IMAGE':
+          stats.images++;
+          break;
+        case 'POINT':
+          stats.points++;
+          break;
+        case 'DIMENSION':
+          stats.dims++;
+          break;
         default:
           if (!SKIP.has(e.type)) unknown.add(e.type);
       }
@@ -539,21 +616,27 @@ export function parseDxf(buf: ArrayBuffer): DxfDrawing {
 
   walk(P.entities, IDENTITY, '0', 'CONTINUOUS', 0);
   if (unknown.size) warnings.push('Пропущены неподдерживаемые объекты: ' + [...unknown].join(', '));
-  if (insUnits === 1) {
-    // дюймы → мм
+  const unit = UNITS[insUnits];
+  if (unit) {
+    // дюймы, сантиметры, метры… → мм
+    const [k, word] = unit;
+    const sc = (v: Vec) => {
+      v.x *= k;
+      v.y *= k;
+    };
     for (const p of prims) {
-      p.pts = p.pts.map((v) => ({ x: v.x * 25.4, y: v.y * 25.4 }));
-      p.length *= 25.4;
+      p.pts = p.pts.map((v) => ({ x: v.x * k, y: v.y * k }));
+      p.length *= k;
     }
-    for (const t of texts) {
-      t.x *= 25.4;
-      t.y *= 25.4;
+    texts.forEach(sc);
+    labels.forEach(sc);
+    stats.fills.forEach(sc);
+    if (Number.isFinite(stats.zMin)) {
+      stats.zMin *= k;
+      stats.zMax *= k;
     }
-    for (const t of labels) {
-      t.x *= 25.4;
-      t.y *= 25.4;
-    }
-    warnings.push('Чертёж в дюймах — пересчитан в мм');
+    stats.units = word;
+    warnings.push(`Чертёж в ${word} — пересчитан в мм`);
   }
-  return { prims, texts, version: P.header.get('$ACADVER') ?? '?', insUnits, warnings, labels };
+  return { prims, texts, version: P.header.get('$ACADVER') ?? '?', insUnits, warnings, labels, stats };
 }

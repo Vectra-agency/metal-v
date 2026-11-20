@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { isEditable } from '@/components/common/dom.ts';
 import { addFiles, setRequest } from '@/store/pipelineActions.ts';
 import { getState, selectView } from '@/store/store.ts';
+import { getTasks } from '@/tasks/store.ts';
 
 /** Фокус в поле заявки (на пустом экране или экране обработки), курсор — в конец */
 export function focusRequestInput(): void {
@@ -21,6 +22,7 @@ export function usePasteCapture(): void {
   useEffect(() => {
     const onPaste = (e: ClipboardEvent) => {
       const s = getState();
+      if (getTasks().screen === 'tasks') return; // на доске вставка — в задачу, не в заказ
       if (selectView(s) === 'result' || isEditable(e.target) || s.ui.dialog || s.ui.sheet) return;
       const dt = e.clipboardData;
       if (!dt) return;

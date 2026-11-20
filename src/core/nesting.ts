@@ -32,6 +32,7 @@ export interface NestResult {
   sheetsFractional: number; // полные листы + доля последнего (занятый прямоугольник)
   utilization: number; // площадь деталей (габариты) / площадь использованных листов
   truncated: boolean; // слишком много деталей — укладку посчитали по образцу
+  scale: number; // доля уложенных деталей при укладке по образцу (иначе 1)
 }
 
 interface Rect {
@@ -173,5 +174,5 @@ export function nest(items: NestItem[], o: NestOptions): NestResult {
   if (scale < 1) frac /= scale;
   const partsArea = queue.reduce((s, q) => s + (q.w - o.gap) * (q.h - o.gap), 0) / (scale < 1 ? scale : 1);
   const utilization = frac > 0 ? partsArea / (frac * L * S) : 0;
-  return { sheetW: L, sheetH: S, sheets, unplaced, sheetsFractional: frac, utilization, truncated: scale < 1 };
+  return { sheetW: L, sheetH: S, sheets, unplaced, sheetsFractional: frac, utilization, truncated: scale < 1, scale };
 }

@@ -49,7 +49,10 @@ export type AttentionKind =
   | 'requestLine'
   | 'qtyUnverified'
   | 'aiUnchecked'
-  | 'aiAuto';
+  | 'aiAuto'
+  | 'dxfError'
+  | 'dxfWarn'
+  | 'dxfTech';
 
 export type AttentionAction =
   | { kind: 'open'; positionId: string; focus?: SheetFocus; label?: string } // «Открыть»
@@ -63,6 +66,7 @@ export type AttentionAction =
   | { kind: 'group'; groupKey: string; label: string } // «Своя цена ₽/кг» / «Другой лист…» → вкладка металла
   | { kind: 'refreshPrices' } // «Обновить цены»
   | { kind: 'runAi' } // «Запустить анализ ИИ»
+  | { kind: 'acceptDxf'; positionId: string } // «Считать как есть» — DXF с ошибкой всё-таки посчитать
   | { kind: 'filter'; filter: TableFilter; label: string }; // «Показать непроверенные»
 
 export interface Evidence {
@@ -385,6 +389,7 @@ interface Draft extends AttentionItem {
 export function focusOf(item: AttentionItem): SheetFocus | undefined {
   for (const a of item.actions) if (a.kind === 'open' && a.focus) return a.focus;
   if (item.kind === 'nogeom') return 'dims';
+  if (item.kind === 'dxfError' || item.kind === 'dxfWarn' || item.kind === 'dxfTech') return 'dxf';
   if (item.kind === 'aiProblem' || item.kind === 'aiCheck' || item.kind === 'aiOffer' || item.kind === 'aiAuto') return 'ai';
   return undefined;
 }
@@ -460,6 +465,72 @@ export function buildAttention(i: AttentionInput): Attention {
         actions,
       });
     }
+    // проверка DXF: ошибка — цена не считается, пока не «Считать как есть»; что поправить для цеха; тоньше толщины
+    const dc = p.dxfCheck;
+    if (dc && p.qty > 0) {
+      const errors = dc.issues.filter((x) => x.level === 'error');
+      const warns = dc.issues.filter((x) => x.level === 'warn');
+      const open = { kind: 'open' as const, positionId: base.id, focus: 'dxf' as const, label: 'Показать на контуре' };
+      if (errors.length && !p.dxfAccepted) {
+        add({
+          id: `dxferr:${base.id}`,
+          severity: 'problem',
+          section: 'errors',
+          kind: 'dxfError',
+          positionId: base.id,
+          order: index,
+          title: `${name} — ошибка в DXF, цена не считается`,
+          text: `${errors.map((x) => x.text).join(' ')} Попросите у клиента исправленный файл или посчитайте как есть.`,
+          actions: [open, { kind: 'acceptDxf', positionId: base.id }],
+        });
+      } else if (errors.length) {
+        add({
+          id: `dxferr-ok:${base.id}:${cyrb53(errors.map((x) => x.code).join())}`,
+          severity: 'check',
+          section: 'check',
+          kind: 'dxfError',
+          positionId: base.id,
+          order: index,
+          title: `${name} — DXF с ошибкой посчитан как есть`,
+          text: errors.map((x) => x.text).join(' '),
+          actions: [open, ACK],
+          ack: true,
+        });
+      }
+      if (warns.length) {
+        add({
+          id: `dxfwarn:${base.id}:${warns.map((x) => x.code).join(',')}`,
+          severity: 'check',
+          section: 'check',
+          kind: 'dxfWarn',
+          positionId: base.id,
+          order: index,
+          title: `${name} — DXF стоит поправить для цеха`,
+          text: warns.map((x) => x.text).join(' '),
+          actions: [open, ACK],
+          ackLabel: 'Понятно',
+          ack: true,
+        });
+      }
+      const t = p.thickness;
+      const tech: string[] = [];
+      if (dc.minHole && dc.minHole.d < t - 1e-6) tech.push(`отверстие ${n1(dc.minHole.d)}${NBSP}мм меньше толщины ${n1(t)}${NBSP}мм — лазер может не прорезать`);
+      if (dc.minBridge && dc.minBridge.d < t - 1e-6) tech.push(`перемычка ${n1(dc.minBridge.d)}${NBSP}мм уже толщины — металл перегреется или его поведёт`);
+      if (tech.length) {
+        add({
+          id: `dxftech:${base.id}:${t}`,
+          severity: 'check',
+          section: 'check',
+          kind: 'dxfTech',
+          positionId: base.id,
+          order: index,
+          title: `${name} — ${tech.join('; ')}`,
+          actions: [open, ACK],
+          ack: true,
+        });
+      }
+    }
+
     if (chk && chk.ratio != null && chk.drawing != null && (chk.status === 'bad' || chk.status === 'warn')) {
       const pct = signed(Math.round((chk.ratio - 1) * 100));
       const bad = chk.status === 'bad';

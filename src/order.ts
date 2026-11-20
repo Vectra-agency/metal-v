@@ -3,6 +3,7 @@
 import type { AiDocument, AiState } from './core/ai.ts';
 import { dxfText } from './core/drawingText.ts';
 import { parseDxf, type Vec } from './core/dxf.ts';
+import { checkDxf, hasDxfError, type DxfCheck } from './core/dxfCheck.ts';
 import { analyze, metricsOf, type Analysis } from './core/geometry.ts';
 import { parseFileName, MATERIAL_BY_ID } from './core/materials.ts';
 import { normalizeCutRows } from './core/cutPrice.ts';
@@ -15,7 +16,12 @@ export interface Preview {
   bends: number[][];
   ignored: number[][]; // рамки/штампы и обрывки — не в расчёте
   bbox: [number, number, number, number];
+  bendWhy?: string[]; // почему каждая линия из bends — гиб (по порядку)
+  notBends?: { pts: number[]; why: string }[]; // прямые внутри детали, которые гибом не засчитаны, — с причиной
 }
+
+/** Откуда число гибов позиции: линии гиба в DXF, на чертеже PDF, с зеркального исполнения того же чертежа */
+export type BendsFrom = 'dxf' | 'pdf' | 'twin';
 
 /** Что известно о детали из PDF-чертежа */
 export interface PdfInfo {
@@ -34,7 +40,14 @@ export interface OrderPosition extends Position {
   pdf?: PdfInfo;
   drawingText?: string; // текст с чертежа для ИИ: технические требования, штамп, надписи (обрезан)
   qtySource?: 'request'; // количество взято из заявки (её правка обновит его; ручная правка — снимает)
+  dxfCheck?: DxfCheck; // проверка DXF: ошибки (цена не считается), что поправить для цеха, к сведению
+  dxfAccepted?: boolean; // «Считать как есть»: ошибки DXF видны, но цена считается
+  bendsFrom?: BendsFrom; // откуда detectedBends
+  bendsNote?: string; // подробность: с какого исполнения взяты гибы
 }
+
+/** DXF с ошибкой, и менеджер не сказал «Считать как есть»: цену позиции не считаем */
+export const dxfBlocked = (p: OrderPosition): boolean => !p.dxfAccepted && hasDxfError(p.dxfCheck);
 
 /** Заказ сохранён в общей истории на сервере (src/core/history.ts) */
 export interface OrderHistoryRef {
@@ -165,12 +178,15 @@ export function flat(pts: Vec[], tol: number, closed: boolean): number[] {
 export function makePreview(an: Analysis): Preview {
   const b = an.bbox;
   const tol = Math.max(0.05, Math.hypot(b.maxX - b.minX, b.maxY - b.minY) / 2500);
+  const not = an.bendCands.filter((c) => !c.bend);
   return {
     outer: an.parts.map((p) => flat(p.outer.pts, tol, true)),
     holes: an.parts.flatMap((p) => p.holes.map((h) => flat(h.pts, tol, true))),
     bends: an.bends.map((o) => flat(o.pts, tol, false)),
     ignored: [...an.annotations.map((l) => flat(l.pts, tol * 4, true)), ...an.stray.map((o) => flat(o.pts, tol, false))],
     bbox: [b.minX, b.minY, b.maxX, b.maxY],
+    ...(an.bends.length ? { bendWhy: an.bendCands.filter((c) => c.bend).map((c) => c.why) } : {}),
+    ...(not.length ? { notBends: not.map((c) => ({ pts: flat(c.pts, tol, false), why: c.why })) } : {}),
   };
 }
 
@@ -191,9 +207,12 @@ export function positionFromDxf(buf: ArrayBuffer, fileName: string, defs: Import
   const an = analyze(dwg);
   const m = metricsOf(an.parts, an.bends);
   const pn = parseFileName(fileName);
-  const warnings = [...dwg.warnings, ...an.warnings];
+  const dxfCheck = checkDxf(dwg, an);
+  // то, что стало проверкой DXF (дубли, обрывки, единицы, неизвестные объекты), в предупреждения не дублируем
+  const COVERED = /задвоены|Незамкнутые линии|Не найдено ни одного замкнутого|В файле нет геометрии|пересчитан в мм|неподдерживаемые объекты/;
+  const warnings = [...dwg.warnings, ...an.warnings].filter((w) => !COVERED.test(w));
   if (m.count > 1) warnings.push(`В файле ${m.count} отдельных контура — считаются как один комплект на 1 шт.`);
-  if (!dwg.insUnits && Math.max(m.width, m.height) < 20 && m.count) warnings.push('Очень мелкий габарит — проверьте единицы чертежа (мм?)');
+  if (!dwg.insUnits && Math.max(m.width, m.height) < 20 && Math.max(m.width, m.height) >= 5 && m.count) warnings.push('Очень мелкий габарит — проверьте единицы чертежа (мм?)');
   return {
     id: newId(),
     name: pn.name,
@@ -218,8 +237,10 @@ export function positionFromDxf(buf: ArrayBuffer, fileName: string, defs: Import
     warnings,
     guessed: { material: !pn.materialId, thickness: !pn.thickness, qty: !pn.qty },
     detectedBends: m.bendCount,
+    ...(m.bendCount ? { bendsFrom: 'dxf' as const } : {}),
     source: 'dxf',
     drawingText: dxfText(dwg.labels ?? []) || undefined,
+    ...(dxfCheck.issues.length || dxfCheck.minHole || dxfCheck.minBridge ? { dxfCheck } : {}),
   };
 }
 
@@ -320,6 +341,9 @@ function normalizePosition(raw: unknown): OrderPosition | null {
     warnings: Array.isArray(p.warnings) ? p.warnings.filter((w) => typeof w === 'string') : [],
     guessed: { material: !!g?.material, thickness: !!g?.thickness, qty: !!g?.qty },
     detectedBends: num(p.detectedBends, 0),
+    dxfCheck: isObj(p.dxfCheck) && Array.isArray(p.dxfCheck.issues) ? p.dxfCheck : undefined,
+    dxfAccepted: p.dxfAccepted === true || undefined,
+    bendsFrom: p.bendsFrom === 'dxf' || p.bendsFrom === 'pdf' || p.bendsFrom === 'twin' ? p.bendsFrom : undefined,
   };
 }
 

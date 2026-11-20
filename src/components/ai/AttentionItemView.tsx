@@ -46,6 +46,8 @@ function labelOf(item: AttentionItem, a: AttentionAction): string {
       return 'Обновить цены';
     case 'runAi':
       return 'Запустить анализ ИИ';
+    case 'acceptDxf':
+      return 'Считать как есть';
   }
 }
 

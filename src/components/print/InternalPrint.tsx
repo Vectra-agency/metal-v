@@ -3,6 +3,7 @@
 import type { ReactElement } from 'react';
 import { CATS, type CatKey } from '@/components/common/CostBar.tsx';
 import { cn } from '@/lib/utils.ts';
+import { fmtSheet } from '@/core/pricing.ts';
 import { kg, n0, n1, n2, NBSP, pct1, rub0, rub2 } from '@/format.ts';
 import { clientMoney, materialText, UNPRICED_WORD } from '@/quote.ts';
 import { useDerived } from '@/store/derived.tsx';
@@ -153,12 +154,12 @@ export function InternalPrint(): ReactElement {
                   <td className={num}>{g.positionIds.length}</td>
                   <td className={num}>{kg(g.partsKg)}</td>
                   <td className={cell}>
-                    {g.chosen.offer.w}×{g.chosen.offer.l}
+                    {fmtSheet(g.chosen.offer.w, g.chosen.offer.l)}
                     {g.autoChosen ? '' : ' (выбран вручную)'}
                   </td>
                   <td className={num}>{n2(g.chosen.offer.pricePerKg)}</td>
                   <td className={cell}>{SOURCE[g.chosen.offer.source] ?? g.chosen.offer.source}</td>
-                  <td className={num}>{n1(g.chosen.sheetsCharged)}</td>
+                  <td className={num}>{g.chosen.offer.coil ? `${n2(g.chosen.sheetsCharged)} м` : n1(g.chosen.sheetsCharged)}</td>
                   <td className={num}>{rub0(g.materialCost)}</td>
                 </tr>
               ))}

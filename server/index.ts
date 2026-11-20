@@ -39,7 +39,14 @@ const server = createServer(async (req, res) => {
   try {
     if (await authGate(req, res)) return;
     if (await handleApi(req, res)) return;
-    const path = normalize(decodeURIComponent(new URL(req.url ?? '/', 'http://x').pathname)).replace(/^(\.\.[/\\])+/, '');
+    const url = new URL(req.url ?? '/', 'http://x');
+    // доска задач — /tasks без слэша: с ним относительные адреса сборки (base './') вели бы в /tasks/assets/
+    if (url.pathname === '/tasks/') {
+      res.writeHead(301, { Location: `/tasks${url.search}`, 'Cache-Control': 'no-store' });
+      res.end();
+      return;
+    }
+    const path = normalize(decodeURIComponent(url.pathname)).replace(/^(\.\.[/\\])+/, '');
     const file = join(DIST, path);
     if (file.startsWith(DIST) && existsSync(file) && statSync(file).isFile()) {
       const type = TYPES[extname(file)] ?? 'application/octet-stream';
